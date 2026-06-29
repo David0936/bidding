@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { Outline, Project } from '../types';
 import OutlineEditor from '../components/OutlineEditor';
+import ContentEditor from '../components/ContentEditor';
 
 export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => void }) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -278,6 +279,35 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
               </>
             )}
           </>
+        )}
+      </div>
+
+      {/* Step 3 AI 生成正文 */}
+      <div className="card" style={{ maxWidth: 920 }}>
+        <div className="step-head">
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>3</div>
+          <div>
+            <h2>AI 生成正文</h2>
+            <p className="hint" style={{ margin: 0 }}>
+              按目录逐章节生成正文，可逐节重写、手动编辑后保存。
+            </p>
+          </div>
+        </div>
+
+        {!outline ? (
+          <div className="empty-tip">请先在上一步生成目录。</div>
+        ) : (
+          <ContentEditor
+            projectId={current!.id}
+            outline={outline}
+            onChange={(o) => {
+              setOutline(o);
+              setOutlineDirty(true);
+            }}
+            onSave={handleSaveOutline}
+            saving={savingOutline}
+            dirty={outlineDirty}
+          />
         )}
       </div>
     </div>

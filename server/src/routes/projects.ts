@@ -14,6 +14,8 @@ import {
 } from '../projects/projectStore.js';
 import { parseDocument, detectFileType } from '../projects/docParser.js';
 import { generateOutline } from '../projects/outline/outlineService.js';
+import { generateSectionContent } from '../projects/content/contentService.js';
+import { setNodeContent } from '../projects/outline/treeUtils.js';
 import { loadConfig } from '../store/configStore.js';
 import type { TenderDoc } from '../projects/types.js';
 import type { Outline } from '../projects/outline/types.js';
@@ -132,4 +134,30 @@ projectsRouter.put('/:id/outline', (req, res) => {
   };
   saveOutline(req.params.id, outline);
   res.json(outline);
+});
+
+// 生成单个章节的正文（前端按叶子逐个调用，便于展示进度）
+projectsRouter.post('/:id/content/generate-section', async (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const tenderText = getTenderText(req.params.id);
+  if (!tenderText) return res.status(400).json({ message: '请先上传并解析招标文件' });
+  const outline = getOutline(req.params.id);
+  if (!outline) return res.status(400).json({ message: '请先生成目录' });
+  const nodeId = req.body?.nodeId as string | undefined;
+  if (!nodeId) return res.status(400).json({ message: '缺少 nodeId' });
+
+  try {
+    const result = await generateSectionContent(loadConfig(), tenderText, outline, nodeId);
+    // 写回正文并落盘
+    const updated: Outline = {
+      ...outline,
+      nodes: setNodeContent(outline.nodes, nodeId, result.content),
+      updatedAt: new Date().toISOString(),
+    };
+    saveOutline(req.params.id, updated);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ message: err instanceof Error ? err.message : '正文生成失败' });
+  }
 });

@@ -89,4 +89,15 @@ export const api = {
       body: JSON.stringify(outline),
     });
   },
+
+  // ===== 正文 =====
+  generateSection(
+    id: string,
+    nodeId: string,
+  ): Promise<{ nodeId: string; title: string; content: string }> {
+    return jsonFetch(`/api/projects/${id}/content/generate-section`, {
+      method: 'POST',
+      body: JSON.stringify({ nodeId }),
+    });
+  },
 };

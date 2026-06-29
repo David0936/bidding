@@ -550,3 +550,62 @@ body {
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* ===== 正文编辑器 ===== */
+.content-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.content-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.content-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.content-idx {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.content-path {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.content-textarea {
+  width: 100%;
+  border: none;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  resize: vertical;
+  min-height: 120px;
+  font-family: -apple-system, 'PingFang SC', sans-serif;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+}
+
+.content-textarea:focus {
+  background: #fcfdff;
+}
