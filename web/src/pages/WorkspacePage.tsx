@@ -1,7 +1,8 @@
 // 标书工作台：管理项目 + 主链路步骤。当前实现 Step1（上传解析招标文件）。
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { Project } from '../types';
+import type { Outline, Project } from '../types';
+import OutlineEditor from '../components/OutlineEditor';
 
 export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => void }) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -11,6 +12,12 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [error, setError] = useState('');
   const [preview, setPreview] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // 目录相关
+  const [outline, setOutline] = useState<Outline | null>(null);
+  const [outlineDirty, setOutlineDirty] = useState(false);
+  const [genLoading, setGenLoading] = useState(false);
+  const [savingOutline, setSavingOutline] = useState(false);
 
   const current = projects.find((p) => p.id === currentId) ?? null;
 
@@ -28,17 +35,54 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 切换项目时载入已有解析文本预览
+  // 切换项目时载入已有解析文本预览 + 已有目录
   useEffect(() => {
     setPreview('');
+    setOutline(null);
+    setOutlineDirty(false);
     if (current?.tender) {
       api
         .getTenderText(current.id)
         .then((r) => setPreview(r.text.slice(0, 4000)))
         .catch(() => setPreview(''));
     }
+    if (current) {
+      api
+        .getOutline(current.id)
+        .then((o) => setOutline(o))
+        .catch(() => setOutline(null));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId]);
+
+  async function handleGenerateOutline() {
+    if (!current) return;
+    setGenLoading(true);
+    setError('');
+    try {
+      const o = await api.generateOutline(current.id);
+      setOutline(o);
+      setOutlineDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGenLoading(false);
+    }
+  }
+
+  async function handleSaveOutline() {
+    if (!current || !outline) return;
+    setSavingOutline(true);
+    try {
+      const o = await api.saveOutline(current.id, outline);
+      setOutline(o);
+      setOutlineDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingOutline(false);
+    }
+  }
 
   async function handleCreate() {
     const name = window.prompt('项目名称', '未命名标书');
@@ -179,20 +223,62 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 2~4 占位 */}
-      <div className="card placeholder" style={{ maxWidth: 920 }}>
+      {/* Step 2 AI 生成目录 */}
+      <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className="step-no muted-no">2</div>
+          <div className={`step-no ${current?.tender ? '' : 'muted-no'}`}>2</div>
           <div>
             <h2>AI 生成目录</h2>
-            <p className="hint" style={{ margin: 0 }}>根据招标要求生成结构化标书目录（M3，即将上线）。</p>
+            <p className="hint" style={{ margin: 0 }}>
+              根据招标文件生成结构化标书目录，可手动增删、改名后保存。
+            </p>
           </div>
         </div>
-        <div className="actions">
-          <button className="btn btn-ghost" onClick={onGoSettings}>
-            先配置 AI 模型
-          </button>
-        </div>
+
+        {!current?.tender ? (
+          <div className="empty-tip">请先在上一步上传并解析招标文件。</div>
+        ) : (
+          <>
+            <div className="actions" style={{ marginBottom: outline ? 16 : 0 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleGenerateOutline}
+                disabled={genLoading}
+              >
+                {genLoading ? 'AI 生成中…' : outline ? '重新生成目录' : 'AI 生成目录'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={onGoSettings}>
+                AI 配置
+              </button>
+              {outline && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  共 {outline.nodes.length} 个一级章节
+                </span>
+              )}
+            </div>
+
+            {outline && (
+              <>
+                <OutlineEditor
+                  outline={outline}
+                  onChange={(o) => {
+                    setOutline(o);
+                    setOutlineDirty(true);
+                  }}
+                />
+                <div className="actions" style={{ marginTop: 16 }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleSaveOutline}
+                    disabled={savingOutline || !outlineDirty}
+                  >
+                    {savingOutline ? '保存中…' : outlineDirty ? '保存目录' : '已保存'}
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

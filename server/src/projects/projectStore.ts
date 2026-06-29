@@ -7,6 +7,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { PROJECTS_DIR, ensureDirs } from '../store/paths.js';
 import type { Project, TenderDoc } from './types.js';
+import type { Outline } from './outline/types.js';
 
 function projectDir(id: string): string {
   return path.join(PROJECTS_DIR, id);
@@ -16,6 +17,9 @@ function metaFile(id: string): string {
 }
 function tenderTextFile(id: string): string {
   return path.join(projectDir(id), 'tender.txt');
+}
+function outlineFile(id: string): string {
+  return path.join(projectDir(id), 'outline.json');
 }
 
 function nowIso(): string {
@@ -105,6 +109,25 @@ export function saveTender(id: string, tender: TenderDoc, text: string, original
 export function getTenderText(id: string): string | null {
   try {
     return fs.readFileSync(tenderTextFile(id), 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/** 保存目录（同时更新项目 updatedAt） */
+export function saveOutline(id: string, outline: Outline): Outline | null {
+  const current = readMeta(id);
+  if (!current) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  fs.writeFileSync(outlineFile(id), JSON.stringify(outline, null, 2), 'utf-8');
+  updateProject(id, {});
+  return outline;
+}
+
+export function getOutline(id: string): Outline | null {
+  try {
+    return JSON.parse(fs.readFileSync(outlineFile(id), 'utf-8')) as Outline;
   } catch {
     return null;
   }

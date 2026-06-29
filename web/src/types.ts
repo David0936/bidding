@@ -54,3 +54,17 @@ export interface UploadResult {
   charCount: number;
   preview: string;
 }
+
+// ===== 目录（大纲） =====
+export interface OutlineNode {
+  id: string;
+  title: string;
+  children: OutlineNode[];
+  content?: string;
+}
+
+export interface Outline {
+  title: string;
+  nodes: OutlineNode[];
+  updatedAt: string;
+}

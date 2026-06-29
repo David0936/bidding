@@ -1,5 +1,12 @@
 // 与后端交互的轻量封装
-import type { AIConfig, Project, RedactedAIConfig, TestResult, UploadResult } from './types';
+import type {
+  AIConfig,
+  Outline,
+  Project,
+  RedactedAIConfig,
+  TestResult,
+  UploadResult,
+} from './types';
 
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, {
@@ -67,5 +74,19 @@ export const api = {
       throw new Error(detail);
     }
     return resp.json() as Promise<UploadResult>;
+  },
+
+  // ===== 目录 =====
+  getOutline(id: string): Promise<Outline> {
+    return jsonFetch<Outline>(`/api/projects/${id}/outline`);
+  },
+  generateOutline(id: string): Promise<Outline> {
+    return jsonFetch<Outline>(`/api/projects/${id}/outline/generate`, { method: 'POST' });
+  },
+  saveOutline(id: string, outline: Outline): Promise<Outline> {
+    return jsonFetch<Outline>(`/api/projects/${id}/outline`, {
+      method: 'PUT',
+      body: JSON.stringify(outline),
+    });
   },
 };

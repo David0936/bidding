@@ -9,9 +9,14 @@ import {
   deleteProject,
   saveTender,
   getTenderText,
+  saveOutline,
+  getOutline,
 } from '../projects/projectStore.js';
 import { parseDocument, detectFileType } from '../projects/docParser.js';
+import { generateOutline } from '../projects/outline/outlineService.js';
+import { loadConfig } from '../store/configStore.js';
 import type { TenderDoc } from '../projects/types.js';
+import type { Outline } from '../projects/outline/types.js';
 
 export const projectsRouter = Router();
 
@@ -87,4 +92,44 @@ projectsRouter.post('/:id/tender', upload.single('file'), async (req, res) => {
   } catch (err) {
     res.status(400).json({ message: err instanceof Error ? err.message : '解析失败' });
   }
+});
+
+// 读取已保存的目录
+projectsRouter.get('/:id/outline', (req, res) => {
+  const outline = getOutline(req.params.id);
+  if (!outline) return res.status(404).json({ message: '尚未生成目录' });
+  res.json(outline);
+});
+
+// AI 生成目录
+projectsRouter.post('/:id/outline/generate', async (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const tenderText = getTenderText(req.params.id);
+  if (!tenderText) return res.status(400).json({ message: '请先上传并解析招标文件' });
+
+  try {
+    const outline = await generateOutline(loadConfig(), tenderText, project.name);
+    saveOutline(req.params.id, outline);
+    res.json(outline);
+  } catch (err) {
+    res.status(400).json({ message: err instanceof Error ? err.message : '目录生成失败' });
+  }
+});
+
+// 保存（手动编辑后的）目录
+projectsRouter.put('/:id/outline', (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const incoming = req.body as Outline;
+  if (!incoming || !Array.isArray(incoming.nodes)) {
+    return res.status(400).json({ message: '目录数据格式不正确' });
+  }
+  const outline: Outline = {
+    title: incoming.title?.trim() || '投标技术方案',
+    nodes: incoming.nodes,
+    updatedAt: new Date().toISOString(),
+  };
+  saveOutline(req.params.id, outline);
+  res.json(outline);
 });
