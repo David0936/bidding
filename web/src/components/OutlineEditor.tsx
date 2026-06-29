@@ -1,5 +1,6 @@
 // 目录编辑器：递归渲染可编辑的章节树。支持改标题、加子节点、加同级、删除。
 import type { Outline, OutlineNode } from '../types';
+import { IconCornerDownRight, IconTrash, IconPlus } from './Icons';
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -42,7 +43,7 @@ function NodeRow({
   onRemove: (id: string) => void;
 }) {
   return (
-    <div className="outline-node" style={{ marginLeft: depth * 20 }}>
+    <div className="outline-node" style={{ marginLeft: depth * 24 }}>
       <div className="outline-row">
         <span className="outline-dot" data-depth={depth} />
         <input
@@ -52,12 +53,22 @@ function NodeRow({
         />
         <div className="outline-actions">
           {depth < 3 && (
-            <button className="mini-btn" title="添加子条目" onClick={() => onAddChild(node.id)}>
-              ＋子
+            <button
+              className="mini-btn"
+              title="添加子条目"
+              aria-label="添加子条目"
+              onClick={() => onAddChild(node.id)}
+            >
+              <IconCornerDownRight />
             </button>
           )}
-          <button className="mini-btn danger" title="删除" onClick={() => onRemove(node.id)}>
-            删
+          <button
+            className="mini-btn danger"
+            title="删除"
+            aria-label="删除"
+            onClick={() => onRemove(node.id)}
+          >
+            <IconTrash />
           </button>
         </div>
       </div>
@@ -113,7 +124,8 @@ export default function OutlineEditor({
           setNodes([...outline.nodes, { id: uid(), title: '新章节', children: [] }])
         }
       >
-        ＋ 添加一级章节
+        <IconPlus />
+        添加一级章节
       </button>
     </div>
   );

@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { api } from '../api';
 import type { Outline } from '../types';
 import { collectLeaves, setNodeContent, countGenerated } from '../lib/outlineTree';
+import { IconPen, IconSave, IconCheckCircle, IconAlertTriangle } from './Icons';
 
 export default function ContentEditor({
   projectId,
@@ -67,6 +68,7 @@ export default function ContentEditor({
     <div>
       <div className="actions" style={{ marginBottom: 14 }}>
         <button className="btn btn-primary" onClick={handleGenerateAll} disabled={busyAll}>
+          <IconPen />
           {busyAll ? '生成中…' : '一键生成全部正文'}
         </button>
         <button
@@ -74,6 +76,7 @@ export default function ContentEditor({
           onClick={onSave}
           disabled={saving || !dirty}
         >
+          <IconSave />
           {saving ? '保存中…' : dirty ? '保存正文' : '已保存'}
         </button>
         <span className="muted" style={{ fontSize: 12 }}>
@@ -81,8 +84,18 @@ export default function ContentEditor({
         </span>
       </div>
 
-      {busyAll && progress && <div className="result ok" style={{ marginTop: 0 }}>{progress}</div>}
-      {err && <div className="result err">❌ {err}</div>}
+      {busyAll && progress && (
+        <div className="result ok" style={{ marginTop: 0 }}>
+          <IconCheckCircle />
+          <span>{progress}</span>
+        </div>
+      )}
+      {err && (
+        <div className="result err">
+          <IconAlertTriangle />
+          <span>{err}</span>
+        </div>
+      )}
 
       <div className="content-list">
         {leaves.map((leaf, idx) => {
@@ -93,7 +106,8 @@ export default function ContentEditor({
               <div className="content-head">
                 <span className="content-idx">{idx + 1}</span>
                 <span className="content-path">{leaf.path.join(' / ')}</span>
-                <span className={`badge ${filled ? 'badge-on' : 'badge-off'}`}>
+                <span className={`badge ${filled ? 'badge-on' : 'badge-warn'}`}>
+                  {filled && <IconCheckCircle />}
                   {filled ? '已生成' : '待生成'}
                 </span>
                 <button
@@ -101,6 +115,7 @@ export default function ContentEditor({
                   onClick={() => handleRegen(leaf.node.id)}
                   disabled={busyNode === leaf.node.id || busyAll}
                 >
+                  <IconPen />
                   {busyNode === leaf.node.id ? '生成中…' : filled ? '重新生成' : '生成本节'}
                 </button>
               </div>

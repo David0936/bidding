@@ -2,6 +2,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { ProviderType, RedactedAIConfig, TestResult } from '../types';
+import {
+  IconCheckCircle,
+  IconCircle,
+  IconAlertTriangle,
+  IconSave,
+  IconPlug,
+  IconThermometer,
+} from '../components/Icons';
 
 const PRESETS = {
   openai: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
@@ -143,7 +151,8 @@ export default function SettingsPage() {
 
         <div style={{ marginBottom: 14 }}>
           <span className={`badge ${keySet ? 'badge-on' : 'badge-off'}`}>
-            {keySet ? '● 当前提供方 Key 已设置' : '○ 当前提供方 Key 未设置'}
+            {keySet ? <IconCheckCircle /> : <IconCircle />}
+            {keySet ? '当前提供方 Key 已设置' : '当前提供方 Key 未设置'}
           </span>
         </div>
 
@@ -217,7 +226,10 @@ export default function SettingsPage() {
 
         <div className="row">
           <div className="field">
-            <label>采样温度 temperature</label>
+            <label>
+              <IconThermometer />
+              采样温度 temperature
+            </label>
             <input
               type="number"
               step="0.1"
@@ -243,19 +255,29 @@ export default function SettingsPage() {
 
         <div className="actions">
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            <IconSave />
             {saving ? '保存中…' : '保存配置'}
           </button>
           <button className="btn btn-ghost" onClick={handleTest} disabled={testing}>
+            <IconPlug />
             {testing ? '测试中…' : '测试连通'}
           </button>
-          {savedTip && <span className="badge badge-on">已保存</span>}
+          {savedTip && (
+            <span className="badge badge-on">
+              <IconCheckCircle />
+              已保存
+            </span>
+          )}
         </div>
 
         {testResult && (
           <div className={`result ${testResult.ok ? 'ok' : 'err'}`}>
-            {testResult.ok
-              ? `✅ 连通成功（${testResult.provider} · ${testResult.model}）\n模型回复：${testResult.reply}`
-              : `❌ 连通失败：${testResult.message}`}
+            {testResult.ok ? <IconCheckCircle /> : <IconAlertTriangle />}
+            <span>
+              {testResult.ok
+                ? `连通成功（${testResult.provider} · ${testResult.model}）\n模型回复：${testResult.reply}`
+                : `连通失败：${testResult.message}`}
+            </span>
           </div>
         )}
       </div>

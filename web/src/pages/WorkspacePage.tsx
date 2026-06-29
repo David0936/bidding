@@ -4,6 +4,19 @@ import { api } from '../api';
 import type { Outline, Project } from '../types';
 import OutlineEditor from '../components/OutlineEditor';
 import ContentEditor from '../components/ContentEditor';
+import { countGenerated } from '../lib/outlineTree';
+import {
+  IconPlus,
+  IconTrash,
+  IconAlertTriangle,
+  IconUploadCloud,
+  IconCheckCircle,
+  IconEye,
+  IconPen,
+  IconSettings,
+  IconDownload,
+  IconChevronRight,
+} from '../components/Icons';
 
 export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => void }) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -146,11 +159,44 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     );
   }
 
+  const gen = outline ? countGenerated(outline) : { total: 0, done: 0 };
+  const done1 = !!current?.tender;
+  const done2 = !!outline;
+  const done3 = gen.total > 0 && gen.done >= gen.total;
+  const currentStep = !done1 ? 1 : !done2 ? 2 : !done3 ? 3 : 4;
+  const flowSteps = [
+    { no: '01', name: '上传招标文件', done: done1 },
+    { no: '02', name: 'AI 生成目录', done: done2 },
+    { no: '03', name: 'AI 生成正文', done: done3 },
+    { no: '04', name: '导出 Word', done: false },
+  ];
+
   return (
     <div>
       <div className="page-header">
         <h1>标书工作台</h1>
         <p>从招标文件到成稿，四步完成一份投标技术方案初稿。</p>
+      </div>
+
+      {/* 四步主链路总览 */}
+      <div className="flow-bar">
+        {flowSteps.map((s, i) => (
+          <div key={s.no} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span
+              className="flow-chip"
+              data-current={currentStep === i + 1}
+              data-done={s.done}
+            >
+              <span className="flow-no">{s.no}</span>
+              <span>{s.name}</span>
+            </span>
+            {i < flowSteps.length - 1 && (
+              <span className="flow-sep">
+                <IconChevronRight />
+              </span>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* 项目选择栏 */}
@@ -166,21 +212,28 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           ))}
         </select>
         <button className="btn btn-ghost btn-sm" onClick={handleCreate}>
-          ＋ 新建
+          <IconPlus />
+          新建
         </button>
         {current && (
-          <button className="btn btn-ghost btn-sm" onClick={handleDelete}>
+          <button className="btn btn-ghost btn-sm danger" onClick={handleDelete}>
+            <IconTrash />
             删除
           </button>
         )}
       </div>
 
-      {error && <div className="result err">❌ {error}</div>}
+      {error && (
+        <div className="result err">
+          <IconAlertTriangle />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Step 1 上传招标文件 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className="step-no">1</div>
+          <div className="step-no">01</div>
           <div>
             <h2>上传招标文件</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -215,16 +268,21 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                   if (f) handleFile(f);
                 }}
               />
+              <IconUploadCloud />
               {uploading ? (
                 <span>解析中…</span>
               ) : (
                 <span>点击选择，或将文件拖拽到此处</span>
               )}
+              <span className="dz-sub">支持 PDF / Word(.docx) / txt / md</span>
             </div>
 
             {current.tender && (
               <div className="tender-meta">
-                <span className="badge badge-on">已解析</span>
+                <span className="badge badge-on">
+                  <IconCheckCircle />
+                  已解析
+                </span>
                 <span>{current.tender.fileName}</span>
                 <span className="muted">·</span>
                 <span className="muted">{current.tender.fileType.toUpperCase()}</span>
@@ -235,7 +293,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
 
             {preview && (
               <div className="preview-box">
-                <div className="preview-title">解析文本预览（前 4000 字）</div>
+                <div className="preview-title">
+                  <IconEye />
+                  解析文本预览（前 4000 字）
+                </div>
                 <pre>{preview}</pre>
               </div>
             )}
@@ -246,7 +307,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       {/* Step 2 AI 生成目录 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${current?.tender ? '' : 'muted-no'}`}>2</div>
+          <div className={`step-no ${current?.tender ? '' : 'muted-no'}`}>02</div>
           <div>
             <h2>AI 生成目录</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -265,9 +326,11 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 onClick={handleGenerateOutline}
                 disabled={genLoading}
               >
+                <IconPen />
                 {genLoading ? 'AI 生成中…' : outline ? '重新生成目录' : 'AI 生成目录'}
               </button>
               <button className="btn btn-ghost btn-sm" onClick={onGoSettings}>
+                <IconSettings />
                 AI 配置
               </button>
               {outline && (
@@ -304,7 +367,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       {/* Step 3 AI 生成正文 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>3</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>03</div>
           <div>
             <h2>AI 生成正文</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -333,7 +396,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       {/* Step 4 导出 Word */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>4</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>04</div>
           <div>
             <h2>导出 Word</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -347,6 +410,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         ) : (
           <div className="actions">
             <button className="btn btn-primary" onClick={handleExport} disabled={exporting}>
+              <IconDownload />
               {exporting ? '导出中…' : '导出 Word（.docx）'}
             </button>
             <span className="muted" style={{ fontSize: 12 }}>
