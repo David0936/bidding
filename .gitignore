@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+*/node_modules/
+
+# build output
+dist/
+*/dist/
+build/
+*.tsbuildinfo
+
+# runtime data (uploads, generated projects, AI config with keys)
+server/data/
+data/
+
+# logs
+*.log
+npm-debug.log*
+
+# env
+.env
+.env.local
+*/.env
+*/.env.local
+
+# os / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,20 @@
+{
+  "name": "bidforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "智标 BidForge - 原创 AI 标书写作工具（招标文件解析 → AI 目录 → AI 正文 → 导出 Word）",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c green,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w server && npm run build -w web",
+    "start": "npm run start -w server",
+    "install:all": "npm install"
+  },
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
