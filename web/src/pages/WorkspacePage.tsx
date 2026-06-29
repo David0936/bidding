@@ -19,6 +19,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [outlineDirty, setOutlineDirty] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
   const [savingOutline, setSavingOutline] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const current = projects.find((p) => p.id === currentId) ?? null;
 
@@ -82,6 +83,24 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSavingOutline(false);
+    }
+  }
+
+  async function handleExport() {
+    if (!current) return;
+    setExporting(true);
+    setError('');
+    try {
+      // 导出前若有未保存改动，先落盘，确保导出的是最新内容
+      if (outline && outlineDirty) {
+        await api.saveOutline(current.id, outline);
+        setOutlineDirty(false);
+      }
+      await api.downloadDocx(current.id, current.name || '投标技术方案');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -308,6 +327,32 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
             saving={savingOutline}
             dirty={outlineDirty}
           />
+        )}
+      </div>
+
+      {/* Step 4 导出 Word */}
+      <div className="card" style={{ maxWidth: 920 }}>
+        <div className="step-head">
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>4</div>
+          <div>
+            <h2>导出 Word</h2>
+            <p className="hint" style={{ margin: 0 }}>
+              将目录与正文导出为带标题层级的 .docx 投标文件。
+            </p>
+          </div>
+        </div>
+
+        {!outline ? (
+          <div className="empty-tip">请先生成目录与正文。</div>
+        ) : (
+          <div className="actions">
+            <button className="btn btn-primary" onClick={handleExport} disabled={exporting}>
+              {exporting ? '导出中…' : '导出 Word（.docx）'}
+            </button>
+            <span className="muted" style={{ fontSize: 12 }}>
+              文件名：{current?.name || '投标技术方案'}.docx
+            </span>
+          </div>
         )}
       </div>
     </div>

@@ -100,4 +100,28 @@ export const api = {
       body: JSON.stringify({ nodeId }),
     });
   },
+
+  // ===== 导出 =====
+  async downloadDocx(id: string, fallbackName: string): Promise<void> {
+    const resp = await fetch(`/api/projects/${id}/export/docx`);
+    if (!resp.ok) {
+      let detail = `HTTP ${resp.status}`;
+      try {
+        const body = await resp.json();
+        if (body?.message) detail = body.message;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${fallbackName}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };

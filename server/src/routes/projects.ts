@@ -16,6 +16,7 @@ import { parseDocument, detectFileType } from '../projects/docParser.js';
 import { generateOutline } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
 import { setNodeContent } from '../projects/outline/treeUtils.js';
+import { buildDocx } from '../projects/export/exportService.js';
 import { loadConfig } from '../store/configStore.js';
 import type { TenderDoc } from '../projects/types.js';
 import type { Outline } from '../projects/outline/types.js';
@@ -159,5 +160,31 @@ projectsRouter.post('/:id/content/generate-section', async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(400).json({ message: err instanceof Error ? err.message : '正文生成失败' });
+  }
+});
+
+// 导出 Word（.docx）
+projectsRouter.get('/:id/export/docx', async (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const outline = getOutline(req.params.id);
+  if (!outline) return res.status(400).json({ message: '请先生成目录' });
+
+  try {
+    const buffer = await buildDocx(outline);
+    const baseName = (project.name || '投标技术方案').replace(/[\\/:*?"<>|]/g, '_');
+    const fileName = `${baseName}.docx`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    // 同时给 ASCII 回退名与 RFC5987 中文名
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export.docx"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+    );
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : '导出失败' });
   }
 });
