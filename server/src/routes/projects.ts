@@ -9,6 +9,7 @@ import {
   deleteProject,
   saveTender,
   getTenderText,
+  getTenderOriginalText,
   saveOriginalPlan,
   getOriginalPlanText,
   deleteOriginalPlan,
@@ -105,7 +106,7 @@ projectsRouter.get('/', (req, res) => {
   res.json(listProjectsForAccount(currentAccountId(req)));
 });
 
-// 项目详情（可选带招标文件文本：?withText=1）
+// 项目详情（可选带招标文件 Markdown：?withText=1）
 projectsRouter.get('/:id', (req, res) => {
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
@@ -128,7 +129,7 @@ projectsRouter.delete('/:id', (req, res) => {
   res.json({ ok });
 });
 
-// 招标文件文本
+// 招标文件 Markdown（tender-text 为历史兼容接口）
 projectsRouter.get('/:id/tender-text', (req, res) => {
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
@@ -137,13 +138,37 @@ projectsRouter.get('/:id/tender-text', (req, res) => {
   res.json({ text });
 });
 
-// 已有技术方案文本
+projectsRouter.get('/:id/tender-markdown', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const markdown = getTenderText(req.params.id);
+  if (markdown === null) return res.status(404).json({ message: '尚未上传招标文件' });
+  res.json({ markdown });
+});
+
+projectsRouter.get('/:id/tender-original-markdown', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const markdown = getTenderOriginalText(req.params.id);
+  if (markdown === null) return res.status(404).json({ message: '尚未上传招标文件' });
+  res.json({ markdown });
+});
+
+// 已有技术方案 Markdown（original-plan-text 为历史兼容接口）
 projectsRouter.get('/:id/original-plan-text', (req, res) => {
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   const text = getOriginalPlanText(req.params.id);
   if (text === null) return res.status(404).json({ message: '尚未上传已有技术方案' });
   res.json({ text });
+});
+
+projectsRouter.get('/:id/original-plan-markdown', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const markdown = getOriginalPlanText(req.params.id);
+  if (markdown === null) return res.status(404).json({ message: '尚未上传已有技术方案' });
+  res.json({ markdown });
 });
 
 // 读取已保存的招标文件关键项解析
@@ -201,7 +226,7 @@ projectsRouter.post('/:id/tender', upload.single('file'), async (req, res) => {
   const fileName = req.file.originalname;
   const fileType = detectFileType(fileName);
   if (!fileType) {
-    return res.status(400).json({ message: '暂不支持的文件格式，请上传 PDF、Word(.docx) 或 txt。' });
+    return res.status(400).json({ message: '暂不支持的文件格式，请上传 PDF、Word(.docx)、txt 或 md。' });
   }
 
   try {
@@ -228,7 +253,7 @@ projectsRouter.post('/:id/original-plan', upload.single('file'), async (req, res
   const fileName = req.file.originalname;
   const fileType = detectFileType(fileName);
   if (!fileType) {
-    return res.status(400).json({ message: '暂不支持的文件格式，请上传 PDF、Word(.docx) 或 txt。' });
+    return res.status(400).json({ message: '暂不支持的文件格式，请上传 PDF、Word(.docx)、txt 或 md。' });
   }
 
   try {

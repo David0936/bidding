@@ -174,13 +174,15 @@ export interface AdminBillingOverview {
 }
 
 // ===== 标书项目 =====
-export type TenderFileType = 'pdf' | 'docx' | 'txt';
+export type TenderFileType = 'pdf' | 'docx' | 'txt' | 'md';
 
 export interface TenderDoc {
   fileName: string;
   fileType: TenderFileType;
   charCount: number;
   uploadedAt: string;
+  markdownPath?: string;
+  originalMarkdownPath?: string;
 }
 
 export interface ElectronicSeal {
@@ -352,6 +354,7 @@ export interface KnowledgeDocument {
   fileName: string;
   fileType: TenderFileType;
   charCount: number;
+  markdownPath?: string;
   createdAt: string;
   updatedAt: string;
   analyzedAt?: string;

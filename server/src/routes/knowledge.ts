@@ -39,7 +39,7 @@ knowledgeRouter.post('/documents', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: '未收到文件' });
   const fileType = detectFileType(req.file.originalname);
   if (!fileType) {
-    return res.status(400).json({ message: '暂不支持的文件格式，请上传 PDF、Word(.docx) 或 txt/md。' });
+    return res.status(400).json({ message: '暂不支持的文件格式，请上传 PDF、Word(.docx)、txt 或 md。' });
   }
   try {
     const { text } = await parseDocument(req.file.buffer, req.file.originalname);

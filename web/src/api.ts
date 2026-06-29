@@ -258,10 +258,20 @@ export const api = {
     return jsonFetch<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' });
   },
   getTenderText(id: string): Promise<{ text: string }> {
-    return jsonFetch<{ text: string }>(`/api/projects/${id}/tender-text`);
+    return jsonFetch<{ markdown: string }>(`/api/projects/${id}/tender-markdown`).then((res) => ({
+      text: res.markdown,
+    }));
+  },
+  getTenderMarkdown(id: string): Promise<{ markdown: string }> {
+    return jsonFetch<{ markdown: string }>(`/api/projects/${id}/tender-markdown`);
   },
   getOriginalPlanText(id: string): Promise<{ text: string }> {
-    return jsonFetch<{ text: string }>(`/api/projects/${id}/original-plan-text`);
+    return jsonFetch<{ markdown: string }>(`/api/projects/${id}/original-plan-markdown`).then((res) => ({
+      text: res.markdown,
+    }));
+  },
+  getOriginalPlanMarkdown(id: string): Promise<{ markdown: string }> {
+    return jsonFetch<{ markdown: string }>(`/api/projects/${id}/original-plan-markdown`);
   },
   async uploadTender(id: string, file: File): Promise<UploadResult> {
     const form = new FormData();

@@ -284,7 +284,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setSealImageUrl(url);
   }
 
-  // 切换项目时载入已有解析文本预览 + 已有目录
+  // 切换项目时载入已有 Markdown 工作稿预览 + 已有目录
   useEffect(() => {
     setPreview('');
     setOriginalPlanPreview('');
@@ -825,7 +825,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           <div>
             <h2>上传招标文件</h2>
             <p className="hint" style={{ margin: 0 }}>
-              支持 PDF、Word(.docx)、txt / md。上传后自动解析为纯文本，作为后续生成的依据。
+              支持 PDF、Word(.docx)、txt / md。上传后自动解析为 Markdown 工作稿，作为后续生成的依据。
             </p>
           </div>
         </div>
@@ -929,7 +929,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
               <div className="preview-box">
                 <div className="preview-title">
                   <IconEye />
-                  解析文本预览（前 4000 字）
+                  招标文件 Markdown 预览（前 4000 字）
                 </div>
                 <pre>{preview}</pre>
               </div>
@@ -939,7 +939,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
               <div className="preview-box">
                 <div className="preview-title">
                   <IconEye />
-                  已有方案预览（前 3000 字）
+                  已有方案 Markdown 预览（前 3000 字）
                 </div>
                 <pre>{originalPlanPreview}</pre>
               </div>

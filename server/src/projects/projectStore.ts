@@ -1,7 +1,8 @@
 // 文件式项目存储。每个项目一个目录：
 //   data/projects/<id>/project.json   元数据
-//   data/projects/<id>/tender.txt     招标文件解析出的纯文本
-//   data/projects/<id>/original-plan.txt 已有方案解析出的纯文本
+//   data/projects/<id>/tender-original.md 原始完整招标文件 Markdown
+//   data/projects/<id>/tender.md     当前招标文件 Markdown 工作稿
+//   data/projects/<id>/original-plan.md 已有方案 Markdown 工作稿
 //   data/projects/<id>/original.<ext> 上传的原始文件
 //   data/projects/<id>/seal-image.bin 电子印章图片
 //   data/projects/<id>/seal-placements.json 电子印章坐标
@@ -25,8 +26,17 @@ function metaFile(id: string): string {
 function tenderTextFile(id: string): string {
   return path.join(projectDir(id), 'tender.txt');
 }
+function tenderMarkdownFile(id: string): string {
+  return path.join(projectDir(id), 'tender.md');
+}
+function tenderOriginalMarkdownFile(id: string): string {
+  return path.join(projectDir(id), 'tender-original.md');
+}
 function originalPlanTextFile(id: string): string {
   return path.join(projectDir(id), 'original-plan.txt');
+}
+function originalPlanMarkdownFile(id: string): string {
+  return path.join(projectDir(id), 'original-plan.md');
 }
 function outlineFile(id: string): string {
   return path.join(projectDir(id), 'outline.json');
@@ -51,6 +61,17 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function readFirstExisting(files: string[]): string | null {
+  for (const file of files) {
+    try {
+      return fs.readFileSync(file, 'utf-8');
+    } catch {
+      // Try the next known storage path.
+    }
+  }
+  return null;
+}
+
 function readMeta(id: string): Project | null {
   try {
     const raw = fs.readFileSync(metaFile(id), 'utf-8');
@@ -58,7 +79,19 @@ function readMeta(id: string): Project | null {
     return {
       ...parsed,
       accountId: parsed.accountId ?? DEFAULT_PROJECT_ACCOUNT_ID,
-      originalPlan: parsed.originalPlan ?? null,
+      tender: parsed.tender
+        ? {
+            ...parsed.tender,
+            markdownPath: parsed.tender.markdownPath ?? 'tender.md',
+            originalMarkdownPath: parsed.tender.originalMarkdownPath ?? 'tender-original.md',
+          }
+        : null,
+      originalPlan: parsed.originalPlan
+        ? {
+            ...parsed.originalPlan,
+            markdownPath: parsed.originalPlan.markdownPath ?? 'original-plan.md',
+          }
+        : null,
       seal: parsed.seal ?? null,
     };
   } catch {
@@ -151,13 +184,15 @@ function clearGeneratedFiles(id: string): void {
   }
 }
 
-/** 保存招标文件解析结果（文本另存为文件，元数据记录摘要） */
+/** 保存招标文件解析结果（Markdown 另存为文件，元数据记录摘要） */
 export function saveTender(id: string, tender: TenderDoc, text: string, originalBuffer?: Buffer, originalExt?: string): Project | null {
   const current = readMeta(id);
   if (!current) return null;
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
-  fs.writeFileSync(tenderTextFile(id), text, 'utf-8');
+  fs.writeFileSync(tenderOriginalMarkdownFile(id), text, 'utf-8');
+  fs.writeFileSync(tenderMarkdownFile(id), text, 'utf-8');
+  fs.rmSync(tenderTextFile(id), { force: true });
   for (const entry of fs.readdirSync(projectDir(id))) {
     if (entry.startsWith('original.')) {
       fs.rmSync(path.join(projectDir(id), entry), { force: true });
@@ -168,15 +203,21 @@ export function saveTender(id: string, tender: TenderDoc, text: string, original
   }
   for (const file of [analysisFile(id)]) fs.rmSync(file, { force: true });
   clearGeneratedFiles(id);
-  return updateProject(id, { tender });
+  return updateProject(id, {
+    tender: {
+      ...tender,
+      markdownPath: 'tender.md',
+      originalMarkdownPath: 'tender-original.md',
+    },
+  });
 }
 
 export function getTenderText(id: string): string | null {
-  try {
-    return fs.readFileSync(tenderTextFile(id), 'utf-8');
-  } catch {
-    return null;
-  }
+  return readFirstExisting([tenderMarkdownFile(id), tenderTextFile(id)]);
+}
+
+export function getTenderOriginalText(id: string): string | null {
+  return readFirstExisting([tenderOriginalMarkdownFile(id), tenderMarkdownFile(id), tenderTextFile(id)]);
 }
 
 /** 保存已有方案解析结果（用于扩写模式） */
@@ -191,7 +232,8 @@ export function saveOriginalPlan(
   if (!current) return null;
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
-  fs.writeFileSync(originalPlanTextFile(id), text, 'utf-8');
+  fs.writeFileSync(originalPlanMarkdownFile(id), text, 'utf-8');
+  fs.rmSync(originalPlanTextFile(id), { force: true });
   for (const entry of fs.readdirSync(projectDir(id))) {
     if (entry.startsWith('original-plan.')) {
       fs.rmSync(path.join(projectDir(id), entry), { force: true });
@@ -201,21 +243,23 @@ export function saveOriginalPlan(
     fs.writeFileSync(path.join(projectDir(id), `original-plan.${originalExt}`), originalBuffer);
   }
   clearGeneratedFiles(id);
-  return updateProject(id, { originalPlan });
+  return updateProject(id, {
+    originalPlan: {
+      ...originalPlan,
+      markdownPath: 'original-plan.md',
+    },
+  });
 }
 
 export function getOriginalPlanText(id: string): string | null {
-  try {
-    return fs.readFileSync(originalPlanTextFile(id), 'utf-8');
-  } catch {
-    return null;
-  }
+  return readFirstExisting([originalPlanMarkdownFile(id), originalPlanTextFile(id)]);
 }
 
 export function deleteOriginalPlan(id: string): Project | null {
   const current = readMeta(id);
   if (!current) return null;
   fs.rmSync(originalPlanTextFile(id), { force: true });
+  fs.rmSync(originalPlanMarkdownFile(id), { force: true });
   for (const entry of fs.existsSync(projectDir(id)) ? fs.readdirSync(projectDir(id)) : []) {
     if (entry.startsWith('original-plan.')) {
       fs.rmSync(path.join(projectDir(id), entry), { force: true });

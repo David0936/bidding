@@ -26,6 +26,7 @@
 | 前端 | React 18 + TypeScript + Vite |
 | 后端 | Node.js + Express + TypeScript（tsx） |
 | 文档解析 | pdf-parse（PDF）、mammoth（Word） |
+| 工作稿 | Markdown 文件化存储（招标文件、原方案、知识库文档） |
 | 导出 | docx、pdf-lib、@pdf-lib/fontkit |
 | AI | OpenAI 兼容 `/chat/completions`、Claude `/v1/messages` |
 | 账号/计费 | 本地 JSON 用户库、额度账本、管理员手工入账；AI 调用统一扣点 |
@@ -141,7 +142,7 @@ npm run dev -w web      # 仅前端
 ## 🗺️ 路线图
 
 - [x] M1 项目骨架 + 双格式 AI 配置 + 连通测试
-- [x] M2 招标文件上传与解析（PDF / Word / txt → 文本）
+- [x] M2 招标文件上传与解析（PDF / Word / txt / md → Markdown 工作稿）
 - [x] M3 AI 解析招标文件关键项（项目、甲方、交付服务、评分要求、废标风险）
 - [x] M4 AI 生成标书目录（可编辑）
 - [x] M5 全局事实设定（统一项目名称、周期、地点、服务承诺等）

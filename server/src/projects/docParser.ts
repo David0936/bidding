@@ -1,9 +1,15 @@
-// 文档解析：把上传的 PDF / Word / 纯文本解析为纯文本字符串。
+// 文档解析：把上传的 PDF / Word / 文本解析为 Markdown 工作稿。
 // 注意：pdf-parse v1 的入口 index.js 含调试代码，直接 import 在 ESM 下会尝试读取测试文件而报错，
 // 因此这里直接引用其内部实现 lib/pdf-parse.js 规避该问题。
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import type { TenderFileType } from './types.js';
+
+type MammothMarkdown = typeof mammoth & {
+  convertToMarkdown: (input: { buffer: Buffer }) => Promise<{ value: string }>;
+};
+
+const mammothMarkdown = mammoth as MammothMarkdown;
 
 export interface ParseResult {
   text: string;
@@ -15,7 +21,8 @@ export function detectFileType(fileName: string): TenderFileType | null {
   const lower = fileName.toLowerCase();
   if (lower.endsWith('.pdf')) return 'pdf';
   if (lower.endsWith('.docx')) return 'docx';
-  if (lower.endsWith('.txt') || lower.endsWith('.md')) return 'txt';
+  if (lower.endsWith('.txt')) return 'txt';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'md';
   return null;
 }
 
@@ -31,7 +38,7 @@ function normalizeText(text: string): string {
 export async function parseDocument(buffer: Buffer, fileName: string): Promise<ParseResult> {
   const fileType = detectFileType(fileName);
   if (!fileType) {
-    throw new Error('暂不支持的文件格式，请上传 PDF、Word(.docx) 或 txt 文件。');
+    throw new Error('暂不支持的文件格式，请上传 PDF、Word(.docx)、txt 或 md 文件。');
   }
 
   if (fileType === 'pdf') {
@@ -42,7 +49,7 @@ export async function parseDocument(buffer: Buffer, fileName: string): Promise<P
   }
 
   if (fileType === 'docx') {
-    const { value } = await mammoth.extractRawText({ buffer });
+    const { value } = await mammothMarkdown.convertToMarkdown({ buffer });
     const text = normalizeText(value || '');
     if (!text) throw new Error('Word 文档解析结果为空。');
     return { text, fileType };

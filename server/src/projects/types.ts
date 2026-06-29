@@ -1,14 +1,18 @@
 // 标书项目数据模型。一个项目 = 一份正在制作的投标文件。
 
-export type TenderFileType = 'pdf' | 'docx' | 'txt';
+export type TenderFileType = 'pdf' | 'docx' | 'txt' | 'md';
 
 export interface TenderDoc {
   /** 原始文件名 */
   fileName: string;
   /** 文件类型 */
   fileType: TenderFileType;
-  /** 解析出的纯文本字符数 */
+  /** 解析出的 Markdown 工作稿字符数 */
   charCount: number;
+  /** Markdown 工作稿相对路径 */
+  markdownPath?: string;
+  /** 原始完整 Markdown 相对路径（当前投标范围裁剪前） */
+  originalMarkdownPath?: string;
   /** 上传时间 */
   uploadedAt: string;
 }

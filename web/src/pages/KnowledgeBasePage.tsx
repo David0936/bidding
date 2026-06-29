@@ -216,7 +216,7 @@ export default function KnowledgeBasePage({ onGoSettings }: { onGoSettings: () =
               <div>
                 <h2>上传资料</h2>
                 <p className="hint" style={{ margin: 0 }}>
-                  支持 PDF、Word(.docx)、txt / md。上传后先解析为本地文本，再由 AI 整理为知识条目。
+                  支持 PDF、Word(.docx)、txt / md。上传后先解析为 Markdown 工作稿，再由 AI 整理为知识条目。
                 </p>
               </div>
             </div>

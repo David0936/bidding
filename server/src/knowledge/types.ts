@@ -15,6 +15,7 @@ export interface KnowledgeDocument {
   fileName: string;
   fileType: TenderFileType;
   charCount: number;
+  markdownPath?: string;
   createdAt: string;
   updatedAt: string;
   analyzedAt?: string;

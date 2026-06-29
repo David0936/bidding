@@ -70,6 +70,7 @@ function normalizeState(parsed: Partial<KnowledgeState>): KnowledgeState {
       ? parsed.documents.map((doc) => ({
           ...doc,
           accountId: doc.accountId ?? DEFAULT_KNOWLEDGE_ACCOUNT_ID,
+          markdownPath: doc.markdownPath ?? `texts/${doc.id}.md`,
         }))
       : [],
     items: Array.isArray(parsed.items)
@@ -102,8 +103,23 @@ function textFile(id: string): string {
   return path.join(TEXT_DIR, `${id}.txt`);
 }
 
+function markdownFile(id: string): string {
+  return path.join(TEXT_DIR, `${id}.md`);
+}
+
 function originalFile(id: string, ext: TenderFileType): string {
   return path.join(ORIGINAL_DIR, `${id}.${ext}`);
+}
+
+function readDocumentMarkdown(id: string): string | null {
+  for (const file of [markdownFile(id), textFile(id)]) {
+    try {
+      return fs.readFileSync(file, 'utf-8');
+    } catch {
+      // Keep old .txt knowledge documents readable.
+    }
+  }
+  return null;
 }
 
 export function getKnowledgeOverview(accountId = DEFAULT_KNOWLEDGE_ACCOUNT_ID): KnowledgeOverview {
@@ -141,6 +157,7 @@ export function deleteKnowledgeFolder(id: string, accountId = DEFAULT_KNOWLEDGE_
   const removedDocs = state.documents.filter((doc) => doc.folderId === id && doc.accountId === accountId);
   for (const doc of removedDocs) {
     fs.rmSync(textFile(doc.id), { force: true });
+    fs.rmSync(markdownFile(doc.id), { force: true });
     fs.rmSync(originalFile(doc.id, doc.fileType), { force: true });
   }
   state.folders = state.folders.filter((folder) => !(folder.id === id && folder.accountId === accountId));
@@ -165,17 +182,20 @@ export function saveKnowledgeDocument(params: {
     ? params.folderId
     : defaultFolder.id;
   const ts = nowIso();
+  const documentId = randomUUID();
   const document: KnowledgeDocument = {
-    id: randomUUID(),
+    id: documentId,
     accountId,
     folderId,
     fileName: params.fileName,
     fileType: params.fileType,
     charCount: params.text.length,
+    markdownPath: `texts/${documentId}.md`,
     createdAt: ts,
     updatedAt: ts,
   };
-  fs.writeFileSync(textFile(document.id), params.text, 'utf-8');
+  fs.writeFileSync(markdownFile(document.id), params.text, 'utf-8');
+  fs.rmSync(textFile(document.id), { force: true });
   if (params.originalBuffer) {
     fs.writeFileSync(originalFile(document.id, params.fileType), params.originalBuffer);
   }
@@ -185,11 +205,7 @@ export function saveKnowledgeDocument(params: {
 }
 
 export function getKnowledgeDocumentText(id: string): string | null {
-  try {
-    return fs.readFileSync(textFile(id), 'utf-8');
-  } catch {
-    return null;
-  }
+  return readDocumentMarkdown(id);
 }
 
 export function deleteKnowledgeDocument(id: string, accountId = DEFAULT_KNOWLEDGE_ACCOUNT_ID): boolean {
@@ -197,6 +213,7 @@ export function deleteKnowledgeDocument(id: string, accountId = DEFAULT_KNOWLEDG
   const doc = state.documents.find((item) => item.id === id && item.accountId === accountId);
   if (!doc) return false;
   fs.rmSync(textFile(doc.id), { force: true });
+  fs.rmSync(markdownFile(doc.id), { force: true });
   fs.rmSync(originalFile(doc.id, doc.fileType), { force: true });
   state.documents = state.documents.filter((item) => !(item.id === id && item.accountId === accountId));
   state.items = state.items.filter((item) => !(item.documentId === id && item.accountId === accountId));
