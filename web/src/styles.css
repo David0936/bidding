@@ -1,5 +1,5 @@
 /* =========================================================================
-   智标 BidForge —— 政企案牍 Institutional Editorial
+   易标 easy bidding —— 政企案牍 Institutional Editorial
    完整可直接覆盖 web/src/styles.css。所有现有 class 已重写，无遗漏。
    反 AI slop：零蓝紫渐变/零霓虹/零 emoji；单一赤陶强调；衬线标题；
    token 全量贯彻；2px 锐角；暖纸案牍配色。
@@ -156,10 +156,18 @@ p {
   padding: var(--space-2) var(--space-2) var(--space-6);
 }
 
-/* 印章 mark 容器：暖白底 + 墨色描边方框（替换蓝紫渐变） */
+/* 官方 logo 图片 */
+.brand-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* 占位印章容器（官方 logo 缺失时回退）：暖白底 + 墨色描边方框 */
 .brand .logo {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-sm);
   background: var(--surface);
   border: 1.5px solid var(--text);
@@ -171,6 +179,13 @@ p {
 .brand .logo svg {
   width: 22px;
   height: 22px;
+}
+.logo-monogram {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 19px;
+  color: var(--accent);
+  line-height: 1;
 }
 
 .brand .title {

@@ -15,7 +15,7 @@ app.use(express.json({ limit: '2mb' }));
 
 // 健康检查
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, name: 'BidForge', version: '0.1.0' });
+  res.json({ ok: true, name: 'Yibiao', version: '0.1.0' });
 });
 
 // 设置 / AI 配置
@@ -31,5 +31,5 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 app.listen(PORT, () => {
-  console.log(`[BidForge] 后端已启动: http://127.0.0.1:${PORT}`);
+  console.log(`[易标] 后端已启动: http://127.0.0.1:${PORT}`);
 });
