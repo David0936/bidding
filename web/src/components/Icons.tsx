@@ -42,7 +42,7 @@ export function IconSettings(p: IconProps) {
   );
 }
 
-// 品牌印章：墨色方框 + 抬头线 + 一点赤陶印（呼应强调色，公章意象）
+// 品牌印章：墨色方框 + 抬头线 + 一点品牌蓝印（呼应强调色，公章意象）
 export function IconBrandMark(p: IconProps) {
   return (
     <Base strokeLinecap="square" strokeLinejoin="miter" {...p}>
@@ -107,6 +107,16 @@ export function IconPlus(p: IconProps) {
   return (
     <Base {...p}>
       <path d="M12 5v14M5 12h14" />
+    </Base>
+  );
+}
+
+export function IconWallet(p: IconProps) {
+  return (
+    <Base {...p}>
+      <path d="M20 7H5a2 2 0 0 1 0-4h12a2 2 0 0 1 2 2v2" />
+      <path d="M4 7h16v12a2 2 0 0 1-2 2H5a3 3 0 0 1-3-3V5" />
+      <path d="M16 13h4" />
     </Base>
   );
 }

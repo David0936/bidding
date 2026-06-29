@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { loadConfig, saveConfig, redactConfig } from '../store/configStore.js';
 import { testConnection, AIError } from '../ai/provider.js';
 import type { AIConfig, ProviderProfile } from '../ai/types.js';
+import { requireAdmin } from '../admin/adminAuth.js';
 
 export const settingsRouter = Router();
 
@@ -27,12 +28,12 @@ function mergeIncoming(current: AIConfig, incoming: Partial<AIConfig>): AIConfig
 }
 
 // 读取配置（脱敏）
-settingsRouter.get('/', (_req, res) => {
+settingsRouter.get('/', requireAdmin, (_req, res) => {
   res.json(redactConfig(loadConfig()));
 });
 
 // 保存配置
-settingsRouter.put('/', (req, res) => {
+settingsRouter.put('/', requireAdmin, (req, res) => {
   const current = loadConfig();
   const merged = mergeIncoming(current, req.body ?? {});
   const saved = saveConfig(merged);
@@ -40,7 +41,7 @@ settingsRouter.put('/', (req, res) => {
 });
 
 // 连通性测试：可选地接受前端临时提交的配置（用于保存前先测）
-settingsRouter.post('/test', async (req, res) => {
+settingsRouter.post('/test', requireAdmin, async (req, res) => {
   const current = loadConfig();
   const config = req.body && Object.keys(req.body).length > 0
     ? mergeIncoming(current, req.body as Partial<AIConfig>)

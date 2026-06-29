@@ -1,17 +1,71 @@
 // 与后端交互的轻量封装
 import type {
   AIConfig,
+  AdminBillingOverview,
+  AdminLoginResult,
+  AdminMeResult,
+  AuthMeResult,
+  AuthProfile,
+  AuthResult,
+  BillingOverview,
+  ConsistencyAudit,
+  DuplicateCheckResult,
+  GlobalFacts,
+  KnowledgeOverview,
+  KnowledgeUploadResult,
   Outline,
   Project,
   RedactedAIConfig,
+  RejectionCheckResult,
+  SealPlacement,
+  SealState,
+  TenderAnalysis,
   TestResult,
   UploadResult,
 } from './types';
 
+const AUTH_TOKEN_KEY = 'easyBidding.authToken';
+const ADMIN_TOKEN_KEY = 'easyBidding.adminToken';
+
+function getAuthToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function setAuthToken(token: string): void {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+function clearAuthToken(): void {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+function getAdminToken(): string | null {
+  return localStorage.getItem(ADMIN_TOKEN_KEY);
+}
+
+function setAdminToken(token: string): void {
+  localStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+function clearAdminToken(): void {
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+function withAuthHeaders(headers?: HeadersInit): Headers {
+  const next = new Headers(headers);
+  const token = getAuthToken();
+  if (token) next.set('Authorization', `Bearer ${token}`);
+  return next;
+}
+
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = withAuthHeaders(init?.headers);
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
   const resp = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers,
   });
   if (!resp.ok) {
     let detail = `HTTP ${resp.status}`;
@@ -26,20 +80,161 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
+async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    headers: withAuthHeaders(init?.headers),
+  });
+}
+
+async function throwIfNotOk(resp: Response): Promise<void> {
+  if (resp.ok) return;
+  let detail = `HTTP ${resp.status}`;
+  try {
+    const body = await resp.json();
+    if (body?.message) detail = body.message;
+  } catch {
+    /* ignore */
+  }
+  throw new Error(detail);
+}
+
+async function downloadFromResponse(resp: Response, fallbackName: string): Promise<void> {
+  await throwIfNotOk(resp);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function withAdminHeaders(headers?: HeadersInit): Headers {
+  const next = new Headers(headers);
+  const token = getAdminToken();
+  if (token) next.set('x-easy-bidding-admin-token', token);
+  return next;
+}
+
+async function adminJsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = withAdminHeaders(init?.headers);
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const resp = await fetch(url, { ...init, headers });
+  if (!resp.ok) {
+    let detail = `HTTP ${resp.status}`;
+    try {
+      const body = await resp.json();
+      if (body?.message) detail = body.message;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return resp.json() as Promise<T>;
+}
+
 export const api = {
+  getAuthToken,
+  clearAuthToken,
+  getAdminToken,
+  clearAdminToken,
+  async register(email: string, password: string, displayName: string): Promise<AuthProfile> {
+    const result = await jsonFetch<AuthResult>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, displayName }),
+    });
+    setAuthToken(result.token);
+    return result.user;
+  },
+  async login(email: string, password: string): Promise<AuthProfile> {
+    const result = await jsonFetch<AuthResult>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    setAuthToken(result.token);
+    return result.user;
+  },
+  async logout(): Promise<void> {
+    try {
+      await jsonFetch<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
+    } finally {
+      clearAuthToken();
+    }
+  },
+  async getMe(): Promise<AuthMeResult> {
+    if (!getAuthToken()) return { authenticated: false, user: null };
+    return jsonFetch<AuthMeResult>('/api/auth/me');
+  },
+  async adminLogin(secret: string): Promise<AdminLoginResult> {
+    const result = await jsonFetch<AdminLoginResult>('/api/admin/login', {
+      method: 'POST',
+      body: JSON.stringify({ secret }),
+    });
+    setAdminToken(result.token);
+    return result;
+  },
+  async getAdminMe(): Promise<AdminMeResult> {
+    if (!getAdminToken()) return { authenticated: false, role: null };
+    return adminJsonFetch<AdminMeResult>('/api/admin/me');
+  },
+  adminLogout(): void {
+    clearAdminToken();
+  },
+
   getSettings(): Promise<RedactedAIConfig> {
-    return jsonFetch<RedactedAIConfig>('/api/settings');
+    return adminJsonFetch<RedactedAIConfig>('/api/settings');
   },
   saveSettings(config: Partial<AIConfig>): Promise<RedactedAIConfig> {
-    return jsonFetch<RedactedAIConfig>('/api/settings', {
+    return adminJsonFetch<RedactedAIConfig>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(config),
     });
   },
   testConnection(config: Partial<AIConfig>): Promise<TestResult> {
-    return jsonFetch<TestResult>('/api/settings/test', {
+    return adminJsonFetch<TestResult>('/api/settings/test', {
       method: 'POST',
       body: JSON.stringify(config),
+    });
+  },
+
+  // ===== 额度账户 =====
+  getBillingOverview(): Promise<BillingOverview> {
+    return jsonFetch<BillingOverview>('/api/billing/account');
+  },
+  createRechargeOrder(credits: number): Promise<BillingOverview> {
+    return jsonFetch<BillingOverview>('/api/billing/orders', {
+      method: 'POST',
+      body: JSON.stringify({ credits, provider: 'manual' }),
+    });
+  },
+  mockPayRechargeOrder(orderId: string): Promise<BillingOverview> {
+    return jsonFetch<BillingOverview>(`/api/billing/orders/${orderId}/mock-pay`, {
+      method: 'POST',
+    });
+  },
+  cancelRechargeOrder(orderId: string): Promise<BillingOverview> {
+    return jsonFetch<BillingOverview>(`/api/billing/orders/${orderId}/cancel`, {
+      method: 'POST',
+    });
+  },
+  rechargeCredits(credits: number, description?: string): Promise<BillingOverview> {
+    return jsonFetch<BillingOverview>('/api/billing/recharge', {
+      method: 'POST',
+      body: JSON.stringify({ credits, description }),
+    });
+  },
+  getAdminBillingOverview(): Promise<AdminBillingOverview> {
+    return adminJsonFetch<AdminBillingOverview>('/api/billing/admin/overview');
+  },
+  adminAllocateCredits(accountId: string, credits: number, description: string): Promise<AdminBillingOverview> {
+    return adminJsonFetch<AdminBillingOverview>('/api/billing/admin/allocate', {
+      method: 'POST',
+      body: JSON.stringify({ accountId, credits, description }),
     });
   },
 
@@ -53,27 +248,51 @@ export const api = {
       body: JSON.stringify({ name }),
     });
   },
+  renameProject(id: string, name: string): Promise<Project> {
+    return jsonFetch<Project>(`/api/projects/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    });
+  },
   deleteProject(id: string): Promise<{ ok: boolean }> {
     return jsonFetch<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' });
   },
   getTenderText(id: string): Promise<{ text: string }> {
     return jsonFetch<{ text: string }>(`/api/projects/${id}/tender-text`);
   },
+  getOriginalPlanText(id: string): Promise<{ text: string }> {
+    return jsonFetch<{ text: string }>(`/api/projects/${id}/original-plan-text`);
+  },
   async uploadTender(id: string, file: File): Promise<UploadResult> {
     const form = new FormData();
     form.append('file', file);
-    const resp = await fetch(`/api/projects/${id}/tender`, { method: 'POST', body: form });
-    if (!resp.ok) {
-      let detail = `HTTP ${resp.status}`;
-      try {
-        const body = await resp.json();
-        if (body?.message) detail = body.message;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(detail);
-    }
+    const resp = await authFetch(`/api/projects/${id}/tender`, { method: 'POST', body: form });
+    await throwIfNotOk(resp);
     return resp.json() as Promise<UploadResult>;
+  },
+  async uploadOriginalPlan(id: string, file: File): Promise<UploadResult> {
+    const form = new FormData();
+    form.append('file', file);
+    const resp = await authFetch(`/api/projects/${id}/original-plan`, { method: 'POST', body: form });
+    await throwIfNotOk(resp);
+    return resp.json() as Promise<UploadResult>;
+  },
+  deleteOriginalPlan(id: string): Promise<Project> {
+    return jsonFetch<Project>(`/api/projects/${id}/original-plan`, { method: 'DELETE' });
+  },
+
+  // ===== 招标文件关键项解析 =====
+  getAnalysis(id: string): Promise<TenderAnalysis> {
+    return jsonFetch<TenderAnalysis>(`/api/projects/${id}/analysis`);
+  },
+  generateAnalysis(id: string): Promise<TenderAnalysis> {
+    return jsonFetch<TenderAnalysis>(`/api/projects/${id}/analysis/generate`, { method: 'POST' });
+  },
+  saveAnalysis(id: string, analysis: TenderAnalysis): Promise<TenderAnalysis> {
+    return jsonFetch<TenderAnalysis>(`/api/projects/${id}/analysis`, {
+      method: 'PUT',
+      body: JSON.stringify(analysis),
+    });
   },
 
   // ===== 目录 =====
@@ -90,6 +309,32 @@ export const api = {
     });
   },
 
+  // ===== 全局事实 =====
+  getGlobalFacts(id: string): Promise<GlobalFacts> {
+    return jsonFetch<GlobalFacts>(`/api/projects/${id}/global-facts`);
+  },
+  generateGlobalFacts(id: string): Promise<GlobalFacts> {
+    return jsonFetch<GlobalFacts>(`/api/projects/${id}/global-facts/generate`, {
+      method: 'POST',
+    });
+  },
+  saveGlobalFacts(id: string, facts: GlobalFacts): Promise<GlobalFacts> {
+    return jsonFetch<GlobalFacts>(`/api/projects/${id}/global-facts`, {
+      method: 'PUT',
+      body: JSON.stringify(facts),
+    });
+  },
+
+  // ===== 全文一致性审计 =====
+  getConsistencyAudit(id: string): Promise<ConsistencyAudit> {
+    return jsonFetch<ConsistencyAudit>(`/api/projects/${id}/consistency-audit`);
+  },
+  runConsistencyAudit(id: string): Promise<ConsistencyAudit> {
+    return jsonFetch<ConsistencyAudit>(`/api/projects/${id}/consistency-audit/run`, {
+      method: 'POST',
+    });
+  },
+
   // ===== 正文 =====
   generateSection(
     id: string,
@@ -103,25 +348,90 @@ export const api = {
 
   // ===== 导出 =====
   async downloadDocx(id: string, fallbackName: string): Promise<void> {
-    const resp = await fetch(`/api/projects/${id}/export/docx`);
-    if (!resp.ok) {
-      let detail = `HTTP ${resp.status}`;
-      try {
-        const body = await resp.json();
-        if (body?.message) detail = body.message;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(detail);
-    }
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${fallbackName}.docx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const resp = await authFetch(`/api/projects/${id}/export/docx`);
+    await downloadFromResponse(resp, `${fallbackName}.docx`);
+  },
+  async downloadPdf(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/pdf`);
+    await downloadFromResponse(resp, `${fallbackName}.pdf`);
+  },
+  async downloadStampedPdf(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/stamped-pdf`);
+    await downloadFromResponse(resp, `${fallbackName}-盖章版.pdf`);
+  },
+  getSealState(id: string): Promise<SealState> {
+    return jsonFetch<SealState>(`/api/projects/${id}/seal`);
+  },
+  async fetchSealImage(id: string): Promise<Blob> {
+    const resp = await authFetch(`/api/projects/${id}/seal/image`);
+    await throwIfNotOk(resp);
+    return resp.blob();
+  },
+  async uploadSeal(id: string, file: File): Promise<SealState> {
+    const form = new FormData();
+    form.append('file', file);
+    const resp = await authFetch(`/api/projects/${id}/seal`, { method: 'POST', body: form });
+    await throwIfNotOk(resp);
+    return resp.json() as Promise<SealState>;
+  },
+  deleteSeal(id: string): Promise<SealState> {
+    return jsonFetch<SealState>(`/api/projects/${id}/seal`, { method: 'DELETE' });
+  },
+  saveSealPlacements(id: string, placements: SealPlacement[]): Promise<SealState> {
+    return jsonFetch<SealState>(`/api/projects/${id}/seal/placements`, {
+      method: 'PUT',
+      body: JSON.stringify({ placements }),
+    });
+  },
+
+  // ===== 标书查重 =====
+  async runDuplicateCheck(tender: File | null, bids: File[]): Promise<DuplicateCheckResult> {
+    const form = new FormData();
+    if (tender) form.append('tender', tender);
+    for (const file of bids) form.append('bids', file);
+    const resp = await authFetch('/api/checks/duplicate', { method: 'POST', body: form });
+    await throwIfNotOk(resp);
+    return resp.json() as Promise<DuplicateCheckResult>;
+  },
+  async runRejectionCheck(tender: File, bid: File): Promise<RejectionCheckResult> {
+    const form = new FormData();
+    form.append('tender', tender);
+    form.append('bid', bid);
+    const resp = await authFetch('/api/checks/rejection', { method: 'POST', body: form });
+    await throwIfNotOk(resp);
+    return resp.json() as Promise<RejectionCheckResult>;
+  },
+
+  // ===== 知识库 =====
+  getKnowledgeOverview(): Promise<KnowledgeOverview> {
+    return jsonFetch<KnowledgeOverview>('/api/knowledge');
+  },
+  createKnowledgeFolder(name: string): Promise<{ id: string; name: string; createdAt: string; updatedAt: string }> {
+    return jsonFetch('/api/knowledge/folders', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  },
+  deleteKnowledgeFolder(id: string): Promise<{ ok: boolean }> {
+    return jsonFetch(`/api/knowledge/folders/${id}`, { method: 'DELETE' });
+  },
+  async uploadKnowledgeDocument(folderId: string, file: File): Promise<KnowledgeUploadResult> {
+    const form = new FormData();
+    form.append('folderId', folderId);
+    form.append('file', file);
+    const resp = await authFetch('/api/knowledge/documents', { method: 'POST', body: form });
+    await throwIfNotOk(resp);
+    return resp.json() as Promise<KnowledgeUploadResult>;
+  },
+  deleteKnowledgeDocument(id: string): Promise<{ ok: boolean }> {
+    return jsonFetch(`/api/knowledge/documents/${id}`, { method: 'DELETE' });
+  },
+  analyzeKnowledgeDocument(id: string): Promise<KnowledgeOverview> {
+    return jsonFetch<{ overview: KnowledgeOverview }>(`/api/knowledge/documents/${id}/analyze`, {
+      method: 'POST',
+    }).then((res) => res.overview);
+  },
+  deleteKnowledgeItem(id: string): Promise<{ ok: boolean }> {
+    return jsonFetch(`/api/knowledge/items/${id}`, { method: 'DELETE' });
   },
 };

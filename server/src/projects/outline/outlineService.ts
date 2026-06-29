@@ -2,10 +2,13 @@
 import { randomUUID } from 'node:crypto';
 import { jsonChat } from '../../ai/jsonChat.js';
 import type { AIConfig } from '../../ai/types.js';
+import type { KnowledgeItem } from '../../knowledge/types.js';
+import { renderKnowledgeCompact } from '../../knowledge/knowledgeService.js';
 import type { Outline, OutlineNode } from './types.js';
 
 // 招标文件可能很长，这里截断喂给模型，控制 token 成本（目录阶段不需要全文细节）。
 const MAX_TENDER_CHARS = 12000;
+const MAX_ORIGINAL_PLAN_CHARS = 9000;
 
 const SYSTEM_PROMPT = [
   '你是一名资深的投标技术方案编写专家，熟悉中国招投标规则。',
@@ -45,10 +48,22 @@ export async function generateOutline(
   config: AIConfig,
   tenderText: string,
   projectName: string,
+  knowledgeItems: KnowledgeItem[] = [],
+  originalPlanText: string | null = null,
 ): Promise<Outline> {
   const clipped = tenderText.slice(0, MAX_TENDER_CHARS);
+  const clippedOriginalPlan = originalPlanText?.slice(0, MAX_ORIGINAL_PLAN_CHARS) ?? '';
   const truncatedNote =
     tenderText.length > MAX_TENDER_CHARS ? '\n\n（注：招标文件过长，以上为前部分内容节选）' : '';
+  const originalPlanBlock = clippedOriginalPlan
+    ? [
+        '用户上传了已有技术方案，当前任务是扩写和优化，不是完全从零编写。',
+        '原方案内容如下；生成目录时必须尽量保留原方案已有实质内容的承载位置，同时按招标文件补齐缺失章节：',
+        '"""',
+        clippedOriginalPlan,
+        '"""',
+      ].join('\n')
+    : '（未上传已有技术方案，按从零生成技术方案处理）';
 
   const userPrompt = [
     `项目名称：${projectName}`,
@@ -58,7 +73,13 @@ export async function generateOutline(
     clipped + truncatedNote,
     '"""',
     '',
-    '请按以下 JSON 结构输出目录（children 可嵌套，最多三级；没有子级时给空数组）：',
+    '已有技术方案：',
+    originalPlanBlock,
+    '',
+    '可参考的企业知识库条目如下（用于贴近企业能力和既有方案风格；不得与招标文件冲突）：',
+    renderKnowledgeCompact(knowledgeItems),
+    '',
+    '请按以下 JSON 结构输出目录（children 可嵌套，最多三级；没有子级时给空数组）。如果存在已有技术方案，请在满足招标文件要求的前提下保留其主要结构和实质内容位置：',
     '{',
     '  "title": "投标技术方案",',
     '  "sections": [',
@@ -71,6 +92,7 @@ export async function generateOutline(
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userPrompt }],
     temperature: 0.4,
+    feature: 'project.outline',
   });
 
   const nodes = toNodes(raw.sections, 1);

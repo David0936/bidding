@@ -2,11 +2,16 @@
   "name": "yibiao",
   "version": "0.1.0",
   "private": true,
-  "description": "易标 easy bidding - AI 标书写作系统（招标文件解析 → AI 目录 → AI 正文 → 导出 Word）",
+  "main": "electron/main.cjs",
+  "description": "中集易标 easy bidding - AI 标书写作系统（招标文件解析 → AI 目录 → AI 正文 → 导出 Word/PDF → 电子盖章）",
   "license": "MIT",
   "scripts": {
     "dev": "concurrently -k -n server,web -c green,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
+    "dev:desktop": "concurrently -k -n app,electron -c green,magenta \"npm run dev\" \"wait-on tcp:127.0.0.1:8787 http://127.0.0.1:5174 && cross-env EASY_BIDDING_RENDERER_URL=http://127.0.0.1:5174 electron .\"",
     "build": "npm run build -w server && npm run build -w web",
+    "dist:desktop": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
     "start": "npm run start -w server",
     "install:all": "npm install"
   },
@@ -14,7 +19,87 @@
     "server",
     "web"
   ],
+  "build": {
+    "appId": "com.cimc.easybidding",
+    "productName": "中集易标 easy bidding",
+    "asar": true,
+    "artifactName": "EasyBidding-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "server/dist/**/*",
+      "web/dist/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "David0936",
+        "repo": "bidding",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "cors": "^2.8.6",
+    "docx": "^9.7.1",
+    "electron-updater": "^6.8.9",
+    "express": "^4.22.2",
+    "mammoth": "^1.12.0",
+    "multer": "^2.2.0",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.4"
+  },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
+    "wait-on": "^9.0.10"
   }
 }

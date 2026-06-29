@@ -1,11 +1,16 @@
 // 正文生成服务：为目录中的某个叶子章节撰写正文。
 import { chat } from '../../ai/provider.js';
 import type { AIConfig } from '../../ai/types.js';
+import type { GlobalFacts, TenderAnalysis } from '../analysis/types.js';
+import { renderAnalysisForPrompt, renderFactsForPrompt } from '../analysis/analysisService.js';
+import type { KnowledgeItem } from '../../knowledge/types.js';
+import { renderKnowledgeDetails } from '../../knowledge/knowledgeService.js';
 import type { Outline } from '../outline/types.js';
 import { findNode, renderOutlineText } from '../outline/treeUtils.js';
 
 // 招标全文较长，正文阶段同样截断喂给模型控制成本。
 const MAX_TENDER_CHARS = 10000;
+const MAX_ORIGINAL_PLAN_CHARS = 9000;
 
 const SYSTEM_PROMPT = [
   '你是一名资深的投标技术方案撰写专家。',
@@ -27,6 +32,10 @@ export async function generateSectionContent(
   tenderText: string,
   outline: Outline,
   nodeId: string,
+  analysis: TenderAnalysis | null = null,
+  facts: GlobalFacts | null = null,
+  knowledgeItems: KnowledgeItem[] = [],
+  originalPlanText: string | null = null,
 ): Promise<SectionContentResult> {
   const target = findNode(outline.nodes, nodeId);
   if (!target) {
@@ -37,6 +46,18 @@ export async function generateSectionContent(
   }
 
   const clipped = tenderText.slice(0, MAX_TENDER_CHARS);
+  const clippedOriginalPlan = originalPlanText?.slice(0, MAX_ORIGINAL_PLAN_CHARS) ?? '';
+  const originalPlanBlock = clippedOriginalPlan
+    ? [
+        '用户上传了已有技术方案，当前章节生成属于“原方案扩写”。',
+        '必须保留原方案中的实质信息、技术路线、实施方法、服务承诺、设备参数、人员安排、周期、验收、售后等内容；可以优化表达、补充细节、扩充字数，但不得删除关键事实。',
+        '不要在正文中出现“原方案”“用户原文”“历史文档”等说法。',
+        '原方案全文节选：',
+        '"""',
+        clippedOriginalPlan,
+        '"""',
+      ].join('\n')
+    : '（未上传已有技术方案，按从零编写处理）';
   const userPrompt = [
     '【招标文件要点】',
     '"""',
@@ -46,17 +67,32 @@ export async function generateSectionContent(
     '【投标技术方案完整目录（供你理解上下文，不要据此写其它章节）】',
     renderOutlineText(outline),
     '',
+    '【招标文件关键解析项】',
+    renderAnalysisForPrompt(analysis),
+    '',
+    '【必须保持一致的全局事实】',
+    renderFactsForPrompt(facts),
+    '',
+    '【可参考的企业知识库内容】',
+    renderKnowledgeDetails(knowledgeItems),
+    '',
+    '【已有技术方案扩写依据】',
+    originalPlanBlock,
+    '',
     '【当前需要撰写的章节】',
     `章节路径：${target.path.join(' / ')}`,
     `章节标题：${target.node.title}`,
     '',
     '请直接输出该章节的正文 Markdown，篇幅约 400~800 字（视章节重要性可适当增减）。',
+    '如果正文涉及上述全局事实，必须严格沿用事实内容，不得改写成相互冲突的周期、地点、金额、范围、服务承诺或主体名称。',
+    '如果知识库内容与当前章节相关，可以吸收其方法、能力、案例和表述风格；不得引用与招标文件或全局事实冲突的内容。',
   ].join('\n');
 
   const result = await chat(config, {
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userPrompt }],
     temperature: 0.6,
+    feature: 'project.sectionContent',
   });
 
   return {

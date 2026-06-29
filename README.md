@@ -1,6 +1,6 @@
-# 易标 easy bidding
+# 中集易标 easy bidding
 
-> AI 标书写作系统。从招标文件到投标技术方案初稿，一条主链路走完：**文档解析 → AI 生成目录 → AI 生成正文 → 导出 Word**。
+> AI 标书写作系统。从招标文件到投标技术方案初稿，一条主链路走完：**文档解析 → AI 生成目录 → AI 生成正文 → 导出 Word/PDF → 电子盖章**。
 >
 > 由 **中集数科（CIMC Digital Energy Technology）** 出品。
 
@@ -10,8 +10,14 @@
 
 - **双格式 AI 接入**：同时支持「OpenAI 兼容」（DeepSeek / GPT / 火山方舟 / Ollama 等）与「Claude」（Anthropic Messages）两种格式，可分别配置、一键切换、连通测试。
 - **本地优先**：API Key 与生成数据只保存在本机，不上传任何服务器。
-- **主链路工作台**：上传招标文件 → 生成目录 → 生成正文 → 导出 Word（功能逐步上线中）。
-- **Web 架构**：React + Vite 前端 / Node + Express 后端，开发与部署都很轻。
+- **主链路工作台**：上传招标文件 → 解析关键项 → 生成目录 → 设定全局事实 → 生成正文 → 导出 Word/PDF → 电子盖章。
+- **导出与签章**：支持导出 `.docx`、普通 PDF；支持上传 PNG/JPG 电子章，在 A4 页面任意位置放置并导出盖章版 PDF。
+- **业务检查工具**：内置标书查重、废标项检查、知识库辅助生成、全文一致性审计。
+- **按量充值计费**：内置额度账户、充值/消费流水、AI token 用量估算、余额不足拦截，为 Web 订阅制部署打底。
+- **客户账户隔离**：邮箱注册/登录、Bearer token 会话，项目与知识库按客户账户隔离。
+- **管理员后台**：模型配置仅管理员可见；支持线下公对公收款后手工给客户分配额度。
+- **桌面化预留**：已接入 Electron + electron-builder + electron-updater，后续可发布 Win/Mac 安装包。
+- **Web + Desktop 架构**：React + Vite 前端 / Node + Express 后端，桌面版复用同一套业务 API。
 
 ## 🧱 技术栈
 
@@ -20,17 +26,37 @@
 | 前端 | React 18 + TypeScript + Vite |
 | 后端 | Node.js + Express + TypeScript（tsx） |
 | 文档解析 | pdf-parse（PDF）、mammoth（Word） |
-| 导出 | docx |
+| 导出 | docx、pdf-lib、@pdf-lib/fontkit |
 | AI | OpenAI 兼容 `/chat/completions`、Claude `/v1/messages` |
+| 账号/计费 | 本地 JSON 用户库、额度账本、管理员手工入账；AI 调用统一扣点 |
+| 桌面端 | Electron + electron-builder + electron-updater |
+| 本地存储 | 开发期文件系统 JSON；桌面版数据目录可切到用户目录 |
+
+## 技术路线对照
+
+参考项目 `FB208/OpenBidKit_Yibiao` 从本地 `client/package.json` 看，主要是 Electron 桌面应用：Electron、React、TypeScript、Vite、electron-builder、electron-updater、better-sqlite3、Radix UI、mammoth/pdf-parse/pdfjs、docx 等。
+
+当前项目采用原创实现，不复制参考仓库源码。现阶段技术路线是：
+
+- Web/Server 先行：React + Vite 做界面，Express 承载 AI、解析、导出、检查等业务能力。
+- SaaS 计费：客户登录后按账户隔离项目、知识库与额度账本；当前按线下公对公收款运营，管理员确认到账后在后台手工分配额度；服务端统一在 AI 调用门面扣额度，业务模块只声明功能用途。
+- 桌面封装：Electron 主进程嵌入同一个 Express 应用，生产版把 `web/dist` 作为静态前端加载。
+- 更新能力：通过 `electron-updater` + GitHub 发布通道保留版本更新能力，后续补齐签名、公证、安装确认和发布流水线。
 
 ## 📁 目录结构
 
 ```
 bidding/
+├── electron/               # Electron 主进程、预加载、桌面更新桥接
 ├── server/                 # 后端
 │   └── src/
-│       ├── index.ts        # 入口
+│       ├── app.ts          # Express 应用工厂（Web/桌面复用）
+│       ├── index.ts        # 独立后端启动入口
 │       ├── ai/             # AI 提供方抽象（openai + claude 归一化）
+│       ├── auth/           # 客户注册、登录、Bearer token 会话
+│       ├── billing/        # 额度账户、充值流水、AI 用量扣费
+│       ├── knowledge/      # 知识库
+│       ├── projects/       # 项目、解析、目录、正文、审计
 │       ├── routes/         # 接口路由
 │       └── store/          # 本地配置/数据存储
 ├── web/                    # 前端
@@ -51,7 +77,50 @@ npm install          # 安装前后端依赖（workspaces）
 npm run dev          # 同时启动后端(8787) 和前端(5174)
 ```
 
-打开浏览器访问 **http://127.0.0.1:5174**，先到「设置」配置 AI 模型并测试连通。
+打开浏览器访问 **http://127.0.0.1:5174**。客户可直接注册/登录；管理员从登录页「管理员后台」进入，使用 `EASY_BIDDING_ADMIN_SECRET` 登录后配置模型和客户额度。
+
+订阅/充值相关环境变量：
+
+```bash
+EASY_BIDDING_TRIAL_CREDITS=200              # 新账户初始化试用额度
+EASY_BIDDING_CREDITS_PER_1K_TOKENS=1        # 每 1000 tokens 扣除点数
+EASY_BIDDING_MIN_AI_CHARGE_CREDITS=0.1      # 单次 AI 调用最低扣费
+EASY_BIDDING_DEFAULT_ACCOUNT_ID=default     # 未接登录系统时的默认账户
+EASY_BIDDING_BILLING_ENABLED=true           # 设为 false 可临时关闭扣费
+EASY_BIDDING_CENTS_PER_CREDIT=100           # 每 1 点额度对应金额（分）
+EASY_BIDDING_PAYMENT_CURRENCY=CNY           # 订单币种
+EASY_BIDDING_ALLOW_SELF_RECHARGE=false      # 演示环境可设 true；生产不要开放
+EASY_BIDDING_ALLOW_MOCK_PAYMENT=false       # 演示环境可设 true；允许前端确认订单支付
+EASY_BIDDING_ADMIN_SECRET=change-me         # 后台/支付回调人工入账密钥
+EASY_BIDDING_PAYMENT_WEBHOOK_SECRET=secret  # 通用支付回调 HMAC 密钥
+```
+
+当前建议运营方式：客户线下公对公转账 → 管理员进入「管理员后台」→ 选择客户账户 → 填写额度和备注 → 手工分配额度。客户侧看不到模型供应商、Base URL、模型名或 API Key 状态。
+
+生产部署时不要让客户直接调用充值入账接口，也不要开启 `EASY_BIDDING_ALLOW_MOCK_PAYMENT`。第三方支付回调能力保留为后续扩展：客户创建充值订单 → 跳转第三方收银台 → 第三方支付成功回调 → 服务端校验签名 → 确认订单支付并入账。
+
+通用支付回调接口：
+
+```text
+POST /api/billing/payment-webhook/generic
+Header: x-easy-bidding-signature: sha256=<HMAC_SHA256(rawBody, EASY_BIDDING_PAYMENT_WEBHOOK_SECRET)>
+Body: { "orderId": "ord_xxx", "status": "paid", "amountCents": 10000, "currency": "CNY", "providerTradeNo": "第三方流水号" }
+```
+
+服务端会校验签名、订单金额与币种；校验通过后才把订单置为 `paid` 并生成充值流水。管理员账单总览接口为 `GET /api/billing/admin/overview`，需要请求头 `x-easy-bidding-admin-secret`。
+
+桌面开发预览：
+
+```bash
+npm run dev:desktop
+```
+
+桌面打包（需要先完成对应平台签名/发布配置后用于正式分发）：
+
+```bash
+npm run dist:mac
+npm run dist:win
+```
 
 单独启动：
 
@@ -73,12 +142,22 @@ npm run dev -w web      # 仅前端
 
 - [x] M1 项目骨架 + 双格式 AI 配置 + 连通测试
 - [x] M2 招标文件上传与解析（PDF / Word / txt → 文本）
-- [x] M3 AI 生成标书目录（可编辑）
-- [x] M4 按目录逐章节生成正文（一键全生成 / 单节重写 / 手动编辑）
-- [x] M5 导出 Word（.docx，带标题层级）
-- [ ] 后续：知识库、标书查重、废标项检查、桌面端打包
+- [x] M3 AI 解析招标文件关键项（项目、甲方、交付服务、评分要求、废标风险）
+- [x] M4 AI 生成标书目录（可编辑）
+- [x] M5 全局事实设定（统一项目名称、周期、地点、服务承诺等）
+- [x] M6 按目录逐章节生成正文（一键全生成 / 单节重写 / 手动编辑）
+- [x] M7 导出 Word（.docx，带标题层级）
+- [x] M8 知识库、标书查重、废标项检查、全文一致性审计
+- [x] M9 桌面端基础封装与更新通道预留
+- [x] M10 额度账户、按 AI token 用量扣费、充值流水、余额不足拦截
+- [x] M11 客户注册/登录、项目与知识库按账户隔离
+- [x] M12 充值订单、订单状态流转、演示支付确认、支付确认后入账
+- [x] M13 通用支付回调 HMAC 验签、金额/币种校验、管理员账单总览接口
+- [x] M14 管理员独立登录、模型配置后台化、客户不可见模型、线下公对公手工分配额度
+- [x] M15 导出 PDF、上传电子章、按页面任意位置加盖并导出盖章 PDF
+- [ ] 后续：管理员客户检索/备注、订单发票、套餐订阅、具体微信/支付宝/Stripe SDK 接入、桌面图标格式、Win/Mac 签名公证、自动更新发布流水线、更多投标文件模板与质量规则
 
-至此主链路（上传解析 → 生成目录 → 生成正文 → 导出 Word）已全部打通。
+至此主链路（上传解析 → 生成目录 → 生成正文 → 导出 Word/PDF → 电子盖章）已打通。
 
 ## 📄 许可证
 

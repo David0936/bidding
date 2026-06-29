@@ -37,6 +37,10 @@ export interface ChatRequest {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  /** 用于账单流水归类，如 project.outline / checks.rejection */
+  feature?: string;
+  /** 允许少量非计费调用，例如设置页连通性测试 */
+  billable?: boolean;
 }
 
 export interface ChatResult {
@@ -44,6 +48,17 @@ export interface ChatResult {
   /** 实际使用的提供方与模型，便于前端展示 */
   provider: ProviderType;
   model: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimated: boolean;
+  };
+  billing?: {
+    transactionId?: string;
+    credits: number;
+    balanceAfter: number;
+  };
 }
 
 export const DEFAULT_AI_CONFIG: AIConfig = {

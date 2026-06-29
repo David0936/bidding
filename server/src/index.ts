@@ -1,35 +1,11 @@
-// 智标 BidForge 后端入口
-import express from 'express';
-import cors from 'cors';
-import { ensureDirs } from './store/paths.js';
-import { settingsRouter } from './routes/settings.js';
-import { projectsRouter } from './routes/projects.js';
+// 中集易标 easy bidding 后端独立启动入口
+import { createApp } from './app.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
+const staticDir = process.env.EASY_BIDDING_WEB_DIST;
 
-ensureDirs();
+const app = createApp({ staticDir });
 
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: '2mb' }));
-
-// 健康检查
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, name: 'Yibiao', version: '0.1.0' });
-});
-
-// 设置 / AI 配置
-app.use('/api/settings', settingsRouter);
-
-// 标书项目（创建、上传解析招标文件等）
-app.use('/api/projects', projectsRouter);
-
-// 兜底错误处理
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('[server error]', err);
-  res.status(500).json({ ok: false, message: err?.message ?? '服务器内部错误' });
-});
-
-app.listen(PORT, () => {
+export const server = app.listen(PORT, () => {
   console.log(`[易标] 后端已启动: http://127.0.0.1:${PORT}`);
 });

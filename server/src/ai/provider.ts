@@ -8,6 +8,13 @@ import type {
   ProviderProfile,
   ProviderType,
 } from './types.js';
+import { getCurrentAccountId } from '../billing/requestContext.js';
+import {
+  ensureAiCredits,
+  normalizeUsage,
+  recordAiConsumption,
+} from '../billing/billingService.js';
+import type { TokenUsage } from '../billing/types.js';
 
 export class AIError extends Error {
   status?: number;
@@ -39,12 +46,21 @@ function trimSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+interface ProviderCallResult {
+  text: string;
+  usage?: Partial<TokenUsage>;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 async function callOpenAI(
   profile: ProviderProfile,
   req: ChatRequest,
   temperature: number,
   maxTokens: number,
-): Promise<string> {
+): Promise<ProviderCallResult> {
   const messages: Array<{ role: string; content: string }> = [];
   if (req.system) messages.push({ role: 'system', content: req.system });
   for (const m of req.messages) messages.push({ role: m.role, content: m.content });
@@ -75,7 +91,16 @@ async function callOpenAI(
   if (typeof text !== 'string') {
     throw new AIError('OpenAI 兼容接口返回格式异常：未找到回复内容。');
   }
-  return text;
+  const promptTokens = numberOrUndefined(data?.usage?.prompt_tokens);
+  const completionTokens = numberOrUndefined(data?.usage?.completion_tokens);
+  const totalTokens = numberOrUndefined(data?.usage?.total_tokens);
+  return {
+    text,
+    usage:
+      promptTokens || completionTokens || totalTokens
+        ? { promptTokens, completionTokens, totalTokens, estimated: false }
+        : undefined,
+  };
 }
 
 async function callClaude(
@@ -83,7 +108,7 @@ async function callClaude(
   req: ChatRequest,
   temperature: number,
   maxTokens: number,
-): Promise<string> {
+): Promise<ProviderCallResult> {
   // Claude 的 system 是独立字段，messages 仅含 user/assistant
   const resp = await fetch(`${trimSlash(profile.baseUrl)}/v1/messages`, {
     method: 'POST',
@@ -117,7 +142,19 @@ async function callClaude(
   if (!text) {
     throw new AIError('Claude 接口返回格式异常：未找到文本内容。');
   }
-  return text;
+  const promptTokens = numberOrUndefined(data?.usage?.input_tokens);
+  const completionTokens = numberOrUndefined(data?.usage?.output_tokens);
+  const totalTokens =
+    typeof promptTokens === 'number' && typeof completionTokens === 'number'
+      ? promptTokens + completionTokens
+      : undefined;
+  return {
+    text,
+    usage:
+      promptTokens || completionTokens || totalTokens
+        ? { promptTokens, completionTokens, totalTokens, estimated: false }
+        : undefined,
+  };
 }
 
 async function safeErrorText(resp: Response): Promise<string> {
@@ -136,13 +173,36 @@ export async function chat(config: AIConfig, req: ChatRequest): Promise<ChatResu
 
   const temperature = req.temperature ?? config.temperature;
   const maxTokens = req.maxTokens ?? config.maxTokens;
+  const billable = req.billable !== false;
+  const accountId = getCurrentAccountId();
 
-  const text =
+  if (billable) {
+    ensureAiCredits(accountId, req, maxTokens);
+  }
+
+  const result =
     config.provider === 'claude'
       ? await callClaude(profile, req, temperature, maxTokens)
       : await callOpenAI(profile, req, temperature, maxTokens);
 
-  return { text, provider: config.provider, model: profile.model };
+  const usage = normalizeUsage(req, result.text, result.usage);
+  const transaction = billable
+    ? recordAiConsumption(accountId, req, usage, config.provider, profile.model)
+    : null;
+
+  return {
+    text: result.text,
+    provider: config.provider,
+    model: profile.model,
+    usage,
+    billing: transaction
+      ? {
+          transactionId: transaction.id,
+          credits: Math.abs(transaction.credits),
+          balanceAfter: transaction.balanceAfter,
+        }
+      : undefined,
+  };
 }
 
 /** 连通性测试：发一句最短的 ping，验证 Key/地址/模型是否可用 */
@@ -152,5 +212,7 @@ export async function testConnection(config: AIConfig): Promise<ChatResult> {
     messages: [{ role: 'user', content: '请只回复两个字：可用' }],
     maxTokens: 32,
     temperature: 0,
+    billable: false,
+    feature: 'settings.testConnection',
   });
 }

@@ -32,6 +32,8 @@ export interface JsonChatOptions {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  feature?: string;
+  billable?: boolean;
 }
 
 /** 调用模型并返回解析后的 JSON 对象。解析失败时抛出带原文片段的错误，便于排查。 */
@@ -49,6 +51,8 @@ export async function jsonChat<T = unknown>(config: AIConfig, opts: JsonChatOpti
     temperature: opts.temperature ?? 0.3,
     maxTokens: opts.maxTokens,
     signal: opts.signal,
+    feature: opts.feature,
+    billable: opts.billable,
   });
 
   const jsonText = extractJsonText(result.text);

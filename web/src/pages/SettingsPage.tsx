@@ -1,7 +1,13 @@
 // 设置页：配置 AI 模型。同时支持 OpenAI 兼容与 Claude 两种格式，可分别填写并测试连通。
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { ProviderType, RedactedAIConfig, TestResult } from '../types';
+import type {
+  DesktopPlatform,
+  DesktopUpdateResult,
+  ProviderType,
+  RedactedAIConfig,
+  TestResult,
+} from '../types';
 import {
   IconCheckCircle,
   IconCircle,
@@ -9,6 +15,7 @@ import {
   IconSave,
   IconPlug,
   IconThermometer,
+  IconDownload,
 } from '../components/Icons';
 
 const PRESETS = {
@@ -16,12 +23,35 @@ const PRESETS = {
   claude: { baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-6' },
 };
 
+function platformText(platform?: DesktopPlatform) {
+  if (platform === 'darwin') return 'macOS';
+  if (platform === 'win32') return 'Windows';
+  if (platform === 'linux') return 'Linux';
+  return platform ?? '未知';
+}
+
+function updateResultText(result: DesktopUpdateResult) {
+  if (!result.ok) {
+    return result.message ?? '检查更新失败';
+  }
+
+  const version = result.updateInfo?.version;
+  if (version) {
+    return `发现可用版本 ${version}。后续发布流程会接入下载、签名校验与安装确认。`;
+  }
+
+  return '已完成检查，当前暂无可用更新。';
+}
+
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [savedTip, setSavedTip] = useState(false);
+  const [desktopVersion, setDesktopVersion] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateResult, setUpdateResult] = useState<DesktopUpdateResult | null>(null);
 
   // 表单状态
   const [provider, setProvider] = useState<ProviderType>('openai');
@@ -56,6 +86,16 @@ export default function SettingsPage() {
         /* 使用默认值 */
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const bridge = window.easyBiddingDesktop;
+    if (!bridge) return;
+
+    bridge
+      .getVersion()
+      .then(setDesktopVersion)
+      .catch(() => setDesktopVersion(null));
   }, []);
 
   const payload = useMemo(
@@ -111,6 +151,22 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleCheckUpdates() {
+    const bridge = window.easyBiddingDesktop;
+    if (!bridge) return;
+
+    setCheckingUpdate(true);
+    setUpdateResult(null);
+    try {
+      const result = await bridge.checkForUpdates();
+      setUpdateResult(result);
+    } catch (e) {
+      setUpdateResult({ ok: false, message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="page-header">
@@ -122,6 +178,7 @@ export default function SettingsPage() {
 
   const isOpenai = provider === 'openai';
   const keySet = isOpenai ? openaiKeySet : claudeKeySet;
+  const desktopBridge = window.easyBiddingDesktop;
 
   return (
     <div>
@@ -281,6 +338,38 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {desktopBridge && (
+        <div className="card">
+          <h2>桌面应用</h2>
+          <p className="hint">桌面版使用本机用户数据目录，并保留 GitHub 发布通道的更新检查能力。</p>
+
+          <div className="desktop-meta">
+            <div className="desktop-meta-item">
+              <span>当前版本</span>
+              <strong>{desktopVersion ?? '读取中'}</strong>
+            </div>
+            <div className="desktop-meta-item">
+              <span>运行平台</span>
+              <strong>{platformText(desktopBridge.platform)}</strong>
+            </div>
+          </div>
+
+          <div className="actions">
+            <button className="btn btn-ghost" onClick={handleCheckUpdates} disabled={checkingUpdate}>
+              <IconDownload />
+              {checkingUpdate ? '检查中…' : '检查更新'}
+            </button>
+          </div>
+
+          {updateResult && (
+            <div className={`result ${updateResult.ok ? 'ok' : 'err'}`}>
+              {updateResult.ok ? <IconCheckCircle /> : <IconAlertTriangle />}
+              <span>{updateResultText(updateResult)}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
