@@ -325,3 +325,145 @@ body {
   color: var(--text-soft);
   font-size: 13px;
 }
+
+/* ===== 工作台 ===== */
+.project-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  max-width: 920px;
+  box-shadow: var(--shadow);
+}
+
+.project-bar-label {
+  font-weight: 600;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.project-bar select {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.btn-sm {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.step-head .step-no {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.step-head .step-no.muted-no {
+  background: var(--surface-2);
+  color: var(--text-soft);
+}
+
+.step-head h2 {
+  margin: 0 0 2px;
+}
+
+.dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  padding: 30px;
+  text-align: center;
+  color: var(--text-soft);
+  cursor: pointer;
+  background: var(--surface-2);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dropzone:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.tender-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.tender-meta .muted {
+  color: var(--text-soft);
+}
+
+.preview-box {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.preview-title {
+  background: var(--surface-2);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-box pre {
+  margin: 0;
+  padding: 14px;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.7;
+  font-family: 'SF Mono', 'PingFang SC', monospace;
+}
+
+.placeholder {
+  opacity: 0.75;
+}
+
+.empty-tip {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-soft);
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+}

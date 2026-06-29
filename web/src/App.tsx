@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import SettingsPage from './pages/SettingsPage';
-import HomePage from './pages/HomePage';
+import WorkspacePage from './pages/WorkspacePage';
 
 type Tab = 'home' | 'settings';
 
@@ -38,7 +38,7 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {tab === 'home' ? <HomePage onGoSettings={() => setTab('settings')} /> : <SettingsPage />}
+        {tab === 'home' ? <WorkspacePage onGoSettings={() => setTab('settings')} /> : <SettingsPage />}
       </main>
     </div>
   );

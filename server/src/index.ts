@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { ensureDirs } from './store/paths.js';
 import { settingsRouter } from './routes/settings.js';
+import { projectsRouter } from './routes/projects.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 
@@ -19,6 +20,9 @@ app.get('/api/health', (_req, res) => {
 
 // 设置 / AI 配置
 app.use('/api/settings', settingsRouter);
+
+// 标书项目（创建、上传解析招标文件等）
+app.use('/api/projects', projectsRouter);
 
 // 兜底错误处理
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

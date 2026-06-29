@@ -30,3 +30,27 @@ export interface TestResult {
   message?: string;
   status?: number;
 }
+
+// ===== 标书项目 =====
+export type TenderFileType = 'pdf' | 'docx' | 'txt';
+
+export interface TenderDoc {
+  fileName: string;
+  fileType: TenderFileType;
+  charCount: number;
+  uploadedAt: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  tender: TenderDoc | null;
+}
+
+export interface UploadResult {
+  project: Project;
+  charCount: number;
+  preview: string;
+}
