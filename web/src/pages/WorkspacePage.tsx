@@ -6,6 +6,8 @@ import type {
   GlobalFacts,
   Outline,
   Project,
+  ProjectMaterialChecklist,
+  ProjectMaterialItem,
   ResponseMatrix,
   ResponseMatrixItem,
   SealPlacement,
@@ -66,6 +68,36 @@ const RESPONSE_PRIORITY_LABELS: Record<ResponseMatrixItem['priority'], string> =
   high: '高',
   medium: '中',
   low: '低',
+};
+
+const MATERIAL_CATEGORY_LABELS: Record<ProjectMaterialItem['category'], string> = {
+  qualification: '资质',
+  business: '商务',
+  technical: '技术',
+  financial: '财务',
+  legal: '法务',
+  personnel: '人员',
+  performance: '业绩',
+  price: '报价',
+  seal: '签章',
+  other: '其他',
+};
+
+const MATERIAL_OWNER_LABELS: Record<ProjectMaterialItem['ownerRole'], string> = {
+  business: '商务',
+  technical: '技术',
+  finance: '财务',
+  project_manager: '项目经理',
+  product: '产品',
+  legal: '法务',
+  admin: '综合',
+};
+
+const MATERIAL_STATUS_LABELS: Record<ProjectMaterialItem['status'], string> = {
+  pending: '待上传',
+  uploaded: '已上传',
+  needs_review: '待复核',
+  not_required: '非必需',
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -321,6 +353,108 @@ function ResponseMatrixPanel({ matrix }: { matrix: ResponseMatrix }) {
   );
 }
 
+function materialStatusBadge(item: ProjectMaterialItem) {
+  if (item.files.length > 0 || item.status === 'uploaded') return 'badge-on';
+  if (!item.required || item.status === 'not_required') return 'badge-off';
+  return 'badge-warn';
+}
+
+function MaterialChecklistPanel({
+  checklist,
+  uploadingItemId,
+  deletingFileId,
+  onPickFile,
+  onDeleteFile,
+}: {
+  checklist: ProjectMaterialChecklist;
+  uploadingItemId: string;
+  deletingFileId: string;
+  onPickFile: (item: ProjectMaterialItem) => void;
+  onDeleteFile: (itemId: string, fileId: string) => void;
+}) {
+  const requiredItems = checklist.items.filter((item) => item.required);
+  const uploadedRequired = requiredItems.filter((item) => item.files.length > 0 || item.status === 'uploaded');
+  const missingRequired = requiredItems.length - uploadedRequired.length;
+
+  return (
+    <div className="material-panel">
+      <div className="analysis-summary">
+        <strong>资料准备摘要</strong>
+        <p>{checklist.summary}</p>
+      </div>
+      <div className="response-matrix-metrics">
+        <div className="metric-card">
+          <span>资料项</span>
+          <strong>{checklist.items.length}</strong>
+        </div>
+        <div className="metric-card">
+          <span>必需项</span>
+          <strong>{requiredItems.length}</strong>
+        </div>
+        <div className="metric-card">
+          <span>已补齐</span>
+          <strong>{uploadedRequired.length}</strong>
+        </div>
+        <div className="metric-card">
+          <span>待上传</span>
+          <strong>{missingRequired}</strong>
+        </div>
+      </div>
+      <div className="material-list">
+        {checklist.items.map((item) => (
+          <div className="material-item" key={item.id}>
+            <div className="material-head">
+              <span className={`badge ${materialStatusBadge(item)}`}>{MATERIAL_STATUS_LABELS[item.status]}</span>
+              <span className="badge badge-off">{MATERIAL_CATEGORY_LABELS[item.category]}</span>
+              <span className="badge badge-off">{MATERIAL_OWNER_LABELS[item.ownerRole]}</span>
+              {item.required ? <span className="badge badge-warn">必需</span> : <span className="badge badge-off">可选</span>}
+            </div>
+            <div className="material-title-row">
+              <strong>{item.title}</strong>
+              <button className="mini-btn" onClick={() => onPickFile(item)} disabled={uploadingItemId === item.id}>
+                <IconUploadCloud />
+                {uploadingItemId === item.id ? '上传中…' : '上传材料'}
+              </button>
+            </div>
+            <p>{item.description}</p>
+            <p>
+              <strong>用途：</strong>
+              {item.purpose}
+            </p>
+            {item.suggestedSection && (
+              <p>
+                <strong>补充位置：</strong>
+                {item.suggestedSection}
+              </p>
+            )}
+            {item.sourceClause && <span className="muted">依据：{item.sourceClause}</span>}
+            {item.uploadTips && <div className="material-tip">{item.uploadTips}</div>}
+            <div className="material-file-list">
+              {item.files.length === 0 ? (
+                <span className="muted">尚未上传</span>
+              ) : (
+                item.files.map((file) => (
+                  <span className="material-file-chip" key={file.id}>
+                    <IconCheckCircle />
+                    {file.fileName} · {file.fileType.toUpperCase()} · {file.charCount.toLocaleString()} 字
+                    <button
+                      className="link-btn"
+                      onClick={() => onDeleteFile(item.id, file.id)}
+                      disabled={deletingFileId === file.id}
+                    >
+                      删除
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => void }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
@@ -334,6 +468,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [originalPlanPreview, setOriginalPlanPreview] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const originalPlanFileRef = useRef<HTMLInputElement>(null);
+  const materialFileRef = useRef<HTMLInputElement>(null);
+  const [materialTargetItemId, setMaterialTargetItemId] = useState('');
 
   // 招标文件关键项解析
   const [analysis, setAnalysis] = useState<TenderAnalysis | null>(null);
@@ -355,6 +491,12 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   // 点对点响应矩阵
   const [responseMatrix, setResponseMatrix] = useState<ResponseMatrix | null>(null);
   const [matrixLoading, setMatrixLoading] = useState(false);
+
+  // 客户资料补齐
+  const [materialChecklist, setMaterialChecklist] = useState<ProjectMaterialChecklist | null>(null);
+  const [materialLoading, setMaterialLoading] = useState(false);
+  const [uploadingMaterialItemId, setUploadingMaterialItemId] = useState('');
+  const [deletingMaterialFileId, setDeletingMaterialFileId] = useState('');
 
   // 全文一致性审计
   const [audit, setAudit] = useState<ConsistencyAudit | null>(null);
@@ -399,6 +541,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setFacts(null);
     setFactsDirty(false);
     setResponseMatrix(null);
+    setMaterialChecklist(null);
     setAudit(null);
   }
 
@@ -448,6 +591,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setFacts(null);
     setFactsDirty(false);
     setResponseMatrix(null);
+    setMaterialChecklist(null);
     setAudit(null);
     setSealState({ seal: null, placements: [] });
     replaceSealImageUrl('');
@@ -484,6 +628,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         .then((m) => setResponseMatrix(m))
         .catch(() => setResponseMatrix(null));
       api
+        .getMaterialChecklist(current.id)
+        .then((m) => setMaterialChecklist(m))
+        .catch(() => setMaterialChecklist(null));
+      api
         .getConsistencyAudit(current.id)
         .then((a) => setAudit(a))
         .catch(() => setAudit(null));
@@ -519,6 +667,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const a = await api.generateAnalysis(current.id);
       setAnalysis(a);
       setResponseMatrix(null);
+      setMaterialChecklist(null);
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -538,6 +687,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setFacts(null);
       setFactsDirty(false);
       setResponseMatrix(null);
+      setMaterialChecklist(null);
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -546,14 +696,17 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     }
   }
 
-  async function handleSaveOutline() {
+  async function handleSaveOutline(clearResponseMatrix = true) {
     if (!current || !outline) return;
     setSavingOutline(true);
     try {
-      const o = await api.saveOutline(current.id, outline);
+      const o = await api.saveOutline(current.id, outline, { clearResponseMatrix });
       setOutline(o);
       setOutlineDirty(false);
-      setResponseMatrix(null);
+      if (clearResponseMatrix) {
+        setResponseMatrix(null);
+        setMaterialChecklist(null);
+      }
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -571,6 +724,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setFacts(f);
       setFactsDirty(false);
       setResponseMatrix(null);
+      setMaterialChecklist(null);
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -588,6 +742,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setFacts(f);
       setFactsDirty(false);
       setResponseMatrix(null);
+      setMaterialChecklist(null);
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -602,7 +757,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setError('');
     try {
       if (outline && outlineDirty) {
-        await api.saveOutline(current.id, outline);
+        await api.saveOutline(current.id, outline, { clearResponseMatrix: false });
         setOutlineDirty(false);
       }
       if (facts && factsDirty) {
@@ -624,7 +779,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setError('');
     try {
       if (outline && outlineDirty) {
-        const saved = await api.saveOutline(current.id, outline);
+        const saved = await api.saveOutline(current.id, outline, { clearResponseMatrix: false });
         setOutline(saved);
         setOutlineDirty(false);
       }
@@ -635,6 +790,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       }
       const matrix = await api.generateResponseMatrix(current.id);
       setResponseMatrix(matrix);
+      setMaterialChecklist(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -642,9 +798,71 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     }
   }
 
+  async function handleGenerateMaterialChecklist() {
+    if (!current) return;
+    setMaterialLoading(true);
+    setError('');
+    try {
+      if (outline && outlineDirty) {
+        const saved = await api.saveOutline(current.id, outline, { clearResponseMatrix: false });
+        setOutline(saved);
+        setOutlineDirty(false);
+      }
+      if (facts && factsDirty) {
+        const savedFacts = await api.saveGlobalFacts(current.id, facts);
+        setFacts(savedFacts);
+        setFactsDirty(false);
+      }
+      const checklist = await api.generateMaterialChecklist(current.id);
+      setMaterialChecklist(checklist);
+      setAudit(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMaterialLoading(false);
+    }
+  }
+
+  function handlePickMaterialFile(item: ProjectMaterialItem) {
+    setMaterialTargetItemId(item.id);
+    materialFileRef.current?.click();
+  }
+
+  async function handleMaterialFile(file: File) {
+    if (!current || !materialTargetItemId) return;
+    setUploadingMaterialItemId(materialTargetItemId);
+    setError('');
+    try {
+      const checklist = await api.uploadMaterialFile(current.id, materialTargetItemId, file);
+      setMaterialChecklist(checklist);
+      setAudit(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploadingMaterialItemId('');
+      setMaterialTargetItemId('');
+      if (materialFileRef.current) materialFileRef.current.value = '';
+    }
+  }
+
+  async function handleDeleteMaterialFile(itemId: string, fileId: string) {
+    if (!current) return;
+    setDeletingMaterialFileId(fileId);
+    setError('');
+    try {
+      const checklist = await api.deleteMaterialFile(current.id, itemId, fileId);
+      setMaterialChecklist(checklist);
+      setAudit(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletingMaterialFileId('');
+    }
+  }
+
   async function persistOutlineBeforeExport() {
     if (!current || !outline || !outlineDirty) return;
-    const saved = await api.saveOutline(current.id, outline);
+    const saved = await api.saveOutline(current.id, outline, { clearResponseMatrix: false });
     setOutline(saved);
     setOutlineDirty(false);
   }
@@ -998,16 +1216,21 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const done3 = !!outline;
   const done4 = !!facts && facts.items.length > 0;
   const done5 = !!responseMatrix && responseMatrix.items.length > 0;
-  const done6 = gen.total > 0 && gen.done >= gen.total;
-  const currentStep = !done1 ? 1 : !done2 ? 2 : !done3 ? 3 : !done4 ? 4 : !done5 ? 5 : !done6 ? 6 : 7;
+  const requiredMaterials = materialChecklist?.items.filter((item) => item.required) ?? [];
+  const uploadedRequiredMaterials = requiredMaterials.filter((item) => item.files.length > 0 || item.status === 'uploaded');
+  const hasMaterialChecklist = !!materialChecklist && materialChecklist.items.length > 0;
+  const done6 = hasMaterialChecklist && uploadedRequiredMaterials.length >= requiredMaterials.length;
+  const done7 = gen.total > 0 && gen.done >= gen.total;
+  const currentStep = !done1 ? 1 : !done2 ? 2 : !done3 ? 3 : !done4 ? 4 : !done5 ? 5 : !hasMaterialChecklist ? 6 : !done7 ? 7 : 8;
   const flowSteps = [
     { no: '01', name: '上传招标文件', done: done1 },
     { no: '02', name: '解析关键项', done: done2 },
     { no: '03', name: 'AI 生成目录', done: done3 },
     { no: '04', name: '全局事实', done: done4 },
     { no: '05', name: '响应矩阵', done: done5 },
-    { no: '06', name: 'AI 生成正文', done: done6 },
-    { no: '07', name: '导出/盖章', done: false },
+    { no: '06', name: '补充资料', done: done6 },
+    { no: '07', name: 'AI 生成正文', done: done7 },
+    { no: '08', name: '导出/盖章', done: false },
   ];
   const activePlacement = sealState.placements.find((placement) => placement.id === activePlacementId) ?? null;
   const visibleSealPlacements = sealState.placements.filter((placement) => placement.page === sealPage);
@@ -1082,6 +1305,17 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           <span>{error}</span>
         </div>
       )}
+
+      <input
+        ref={materialFileRef}
+        type="file"
+        accept=".pdf,.docx,.txt,.md"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleMaterialFile(f);
+        }}
+      />
 
       {/* Step 1 上传招标文件 */}
       <div className="card" style={{ maxWidth: 920 }}>
@@ -1405,13 +1639,14 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                     setOutline(o);
                     setOutlineDirty(true);
                     setResponseMatrix(null);
+                    setMaterialChecklist(null);
                     setAudit(null);
                   }}
                 />
                 <div className="actions" style={{ marginTop: 16 }}>
                   <button
                     className="btn btn-primary"
-                    onClick={handleSaveOutline}
+                    onClick={() => handleSaveOutline(true)}
                     disabled={savingOutline || !outlineDirty}
                   >
                     {savingOutline ? '保存中…' : outlineDirty ? '保存目录' : '已保存'}
@@ -1472,6 +1707,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                   setFacts(next);
                   setFactsDirty(true);
                   setResponseMatrix(null);
+                  setMaterialChecklist(null);
                   setAudit(null);
                 }}
               />
@@ -1522,10 +1758,55 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 6 AI 生成正文 */}
+      {/* Step 6 客户资料补齐 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
           <div className={`step-no ${responseMatrix ? '' : 'muted-no'}`}>06</div>
+          <div>
+            <h2>补充资料</h2>
+            <p className="hint" style={{ margin: 0 }}>
+              AI 根据招标文件列出客户需要上传的信息和证明材料，上传后会自动补充到对应章节生成上下文。
+            </p>
+          </div>
+        </div>
+
+        {!responseMatrix ? (
+          <div className="empty-tip">请先生成响应矩阵。</div>
+        ) : (
+          <>
+            <div className="actions" style={{ marginBottom: materialChecklist ? 16 : 0 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleGenerateMaterialChecklist}
+                disabled={materialLoading}
+              >
+                <IconUploadCloud />
+                {materialLoading ? '梳理中…' : materialChecklist ? '刷新资料清单' : 'AI 梳理需补资料'}
+              </button>
+              {materialChecklist && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  必需资料 {uploadedRequiredMaterials.length}/{requiredMaterials.length} 已上传
+                </span>
+              )}
+            </div>
+
+            {materialChecklist && (
+              <MaterialChecklistPanel
+                checklist={materialChecklist}
+                uploadingItemId={uploadingMaterialItemId}
+                deletingFileId={deletingMaterialFileId}
+                onPickFile={handlePickMaterialFile}
+                onDeleteFile={handleDeleteMaterialFile}
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Step 7 AI 生成正文 */}
+      <div className="card" style={{ maxWidth: 920 }}>
+        <div className="step-head">
+          <div className={`step-no ${materialChecklist ? '' : 'muted-no'}`}>07</div>
           <div>
             <h2>AI 生成正文</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -1540,22 +1821,31 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           <div className="empty-tip">请先在上一步生成并确认全局事实。</div>
         ) : !responseMatrix ? (
           <div className="empty-tip">请先生成响应矩阵，让正文按评分点、废标项和商务/技术条款逐项覆盖。</div>
+        ) : !materialChecklist ? (
+          <div className="empty-tip">请先梳理资料清单。客户上传的材料会被自动引用到对应章节。</div>
         ) : (
           <>
+            {requiredMaterials.length > uploadedRequiredMaterials.length && (
+              <div className="result warn" style={{ marginTop: 0 }}>
+                <IconAlertTriangle />
+                <span>
+                  还有 {requiredMaterials.length - uploadedRequiredMaterials.length} 项必需资料未上传。可以先生成正文初稿，但相关企业信息、资质、业绩或参数可能需要后补。
+                </span>
+              </div>
+            )}
             <ContentEditor
               projectId={current!.id}
               outline={outline}
               onChange={(o) => {
                 setOutline(o);
                 setOutlineDirty(true);
-                setResponseMatrix(null);
                 setAudit(null);
               }}
-              onSave={handleSaveOutline}
+              onSave={() => handleSaveOutline(false)}
               saving={savingOutline}
               dirty={outlineDirty}
             />
-            {done6 && (
+            {done7 && (
               <div className="audit-box">
                 <div className="actions">
                   <button
@@ -1579,10 +1869,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 7 导出与电子盖章 */}
+      {/* Step 8 导出与电子盖章 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>07</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>08</div>
           <div>
             <h2>导出与电子盖章</h2>
             <p className="hint" style={{ margin: 0 }}>

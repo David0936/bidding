@@ -5,6 +5,8 @@
 //   data/projects/<id>/original-plan.md 已有方案 Markdown 工作稿
 //   data/projects/<id>/original.<ext> 上传的原始文件
 //   data/projects/<id>/response-matrix.json 点对点响应矩阵
+//   data/projects/<id>/material-checklist.json 客户资料补齐清单
+//   data/projects/<id>/materials/<itemId>/ 上传资料原文与解析文本
 //   data/projects/<id>/seal-image.bin 电子印章图片
 //   data/projects/<id>/seal-placements.json 电子印章坐标
 import fs from 'node:fs';
@@ -16,6 +18,11 @@ import type { Outline } from './outline/types.js';
 import type { GlobalFacts, TenderAnalysis } from './analysis/types.js';
 import type { ConsistencyAudit } from './audit/types.js';
 import type { ResponseMatrix } from './responseMatrix/types.js';
+import type {
+  ProjectMaterialChecklist,
+  ProjectMaterialFile,
+  ProjectMaterialItem,
+} from './materialChecklist/types.js';
 
 const DEFAULT_PROJECT_ACCOUNT_ID = process.env.EASY_BIDDING_DEFAULT_ACCOUNT_ID || 'default-account';
 
@@ -52,6 +59,12 @@ function globalFactsFile(id: string): string {
 function responseMatrixFile(id: string): string {
   return path.join(projectDir(id), 'response-matrix.json');
 }
+function materialChecklistFile(id: string): string {
+  return path.join(projectDir(id), 'material-checklist.json');
+}
+function materialsDir(id: string): string {
+  return path.join(projectDir(id), 'materials');
+}
 function consistencyAuditFile(id: string): string {
   return path.join(projectDir(id), 'consistency-audit.json');
 }
@@ -75,6 +88,22 @@ function readFirstExisting(files: string[]): string | null {
     }
   }
   return null;
+}
+
+function safeSegment(input: string): string {
+  return input.replace(/[^\w.-]/g, '_').slice(0, 90) || 'item';
+}
+
+function materialItemDir(projectId: string, itemId: string): string {
+  return path.join(materialsDir(projectId), safeSegment(itemId));
+}
+
+function materialOriginalFile(projectId: string, itemId: string, fileId: string, fileType: string): string {
+  return path.join(materialItemDir(projectId, itemId), `${safeSegment(fileId)}.${fileType}`);
+}
+
+function materialTextFile(projectId: string, itemId: string, fileId: string): string {
+  return path.join(materialItemDir(projectId, itemId), `${safeSegment(fileId)}.md`);
 }
 
 function readMeta(id: string): Project | null {
@@ -196,11 +225,18 @@ export function deleteProject(id: string, accountId?: string): boolean {
   return true;
 }
 
-function clearGeneratedFiles(id: string, options: { includeAnalysis?: boolean } = {}): void {
+function clearGeneratedFiles(
+  id: string,
+  options: { includeAnalysis?: boolean; includeMaterials?: boolean } = {},
+): void {
   const files = [outlineFile(id), globalFactsFile(id), responseMatrixFile(id), consistencyAuditFile(id)];
+  if (options.includeMaterials ?? true) files.push(materialChecklistFile(id));
   if (options.includeAnalysis) files.push(analysisFile(id));
   for (const file of files) {
     fs.rmSync(file, { force: true });
+  }
+  if (options.includeMaterials ?? true) {
+    fs.rmSync(materialsDir(id), { recursive: true, force: true });
   }
 }
 
@@ -247,7 +283,7 @@ export function saveTender(id: string, tender: TenderDoc, text: string, original
     fs.writeFileSync(path.join(projectDir(id), `original.${originalExt}`), originalBuffer);
   }
   for (const file of [analysisFile(id)]) fs.rmSync(file, { force: true });
-  clearGeneratedFiles(id);
+  clearGeneratedFiles(id, { includeMaterials: false });
   return updateProject(id, {
     tender: {
       ...tender,
@@ -383,7 +419,7 @@ export function deleteOriginalPlan(id: string): Project | null {
       fs.rmSync(path.join(projectDir(id), entry), { force: true });
     }
   }
-  clearGeneratedFiles(id);
+  clearGeneratedFiles(id, { includeMaterials: false });
   return updateProject(id, { originalPlan: null });
 }
 
@@ -472,6 +508,184 @@ export function getResponseMatrix(id: string): ResponseMatrix | null {
   } catch {
     return null;
   }
+}
+
+function normalizeMaterialChecklist(checklist: ProjectMaterialChecklist): ProjectMaterialChecklist {
+  return {
+    summary: String(checklist.summary ?? '').trim(),
+    generatedAt: checklist.generatedAt ?? nowIso(),
+    updatedAt: checklist.updatedAt ?? nowIso(),
+    items: Array.isArray(checklist.items)
+      ? checklist.items.map((item, index): ProjectMaterialItem => {
+          const files = Array.isArray(item.files) ? item.files : [];
+          return {
+            id: String(item.id ?? '').trim() || `M${String(index + 1).padStart(3, '0')}`,
+            category: item.category ?? 'other',
+            ownerRole: item.ownerRole ?? 'admin',
+            required: item.required !== false,
+            status: files.length > 0 ? 'uploaded' : item.status ?? 'pending',
+            title: String(item.title ?? '').trim() || `资料 ${index + 1}`,
+            description: String(item.description ?? '').trim(),
+            purpose: String(item.purpose ?? '').trim(),
+            sourceClause: String(item.sourceClause ?? '').trim() || undefined,
+            suggestedSection: String(item.suggestedSection ?? '').trim() || undefined,
+            acceptedFileTypes: Array.isArray(item.acceptedFileTypes) && item.acceptedFileTypes.length
+              ? item.acceptedFileTypes
+              : ['pdf', 'docx', 'txt', 'md'],
+            uploadTips: String(item.uploadTips ?? '').trim() || undefined,
+            files,
+          };
+        })
+      : [],
+  };
+}
+
+export function saveMaterialChecklist(
+  id: string,
+  checklist: ProjectMaterialChecklist,
+): ProjectMaterialChecklist | null {
+  const current = readMeta(id);
+  if (!current) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  const normalized = normalizeMaterialChecklist({
+    ...checklist,
+    updatedAt: nowIso(),
+  });
+  fs.writeFileSync(materialChecklistFile(id), JSON.stringify(normalized, null, 2), 'utf-8');
+  fs.rmSync(consistencyAuditFile(id), { force: true });
+  updateProject(id, {});
+  return normalized;
+}
+
+export function getMaterialChecklist(id: string): ProjectMaterialChecklist | null {
+  try {
+    return normalizeMaterialChecklist(JSON.parse(fs.readFileSync(materialChecklistFile(id), 'utf-8')) as ProjectMaterialChecklist);
+  } catch {
+    return null;
+  }
+}
+
+export function saveMaterialFile(
+  projectId: string,
+  itemId: string,
+  file: Omit<ProjectMaterialFile, 'id' | 'uploadedAt' | 'originalPath' | 'textPath'>,
+  buffer: Buffer,
+  text: string,
+): ProjectMaterialChecklist | null {
+  const checklist = getMaterialChecklist(projectId);
+  if (!checklist) return null;
+  const item = checklist.items.find((entry) => entry.id === itemId);
+  if (!item) return null;
+
+  const fileId = `mat_${randomUUID()}`;
+  const uploadedAt = nowIso();
+  const itemDir = materialItemDir(projectId, itemId);
+  fs.mkdirSync(itemDir, { recursive: true });
+  const originalPath = path.relative(projectDir(projectId), materialOriginalFile(projectId, itemId, fileId, file.fileType));
+  const textPath = path.relative(projectDir(projectId), materialTextFile(projectId, itemId, fileId));
+  fs.writeFileSync(path.join(projectDir(projectId), originalPath), buffer);
+  fs.writeFileSync(path.join(projectDir(projectId), textPath), text, 'utf-8');
+
+  const materialFile: ProjectMaterialFile = {
+    id: fileId,
+    ...file,
+    uploadedAt,
+    originalPath,
+    textPath,
+  };
+  const updated: ProjectMaterialChecklist = {
+    ...checklist,
+    updatedAt: uploadedAt,
+    items: checklist.items.map((entry) =>
+      entry.id === itemId
+        ? {
+            ...entry,
+            status: 'uploaded',
+            files: [...entry.files, materialFile],
+          }
+        : entry,
+    ),
+  };
+  fs.rmSync(consistencyAuditFile(projectId), { force: true });
+  return saveMaterialChecklist(projectId, updated);
+}
+
+export function deleteMaterialFile(projectId: string, itemId: string, fileId: string): ProjectMaterialChecklist | null {
+  const checklist = getMaterialChecklist(projectId);
+  if (!checklist) return null;
+  const item = checklist.items.find((entry) => entry.id === itemId);
+  if (!item) return null;
+  const target = item.files.find((file) => file.id === fileId);
+  if (!target) return null;
+  if (target.originalPath) fs.rmSync(path.join(projectDir(projectId), target.originalPath), { force: true });
+  if (target.textPath) fs.rmSync(path.join(projectDir(projectId), target.textPath), { force: true });
+  const updatedItems = checklist.items.map((entry) => {
+    if (entry.id !== itemId) return entry;
+    const files = entry.files.filter((file) => file.id !== fileId);
+    const status: ProjectMaterialItem['status'] = files.length > 0 ? 'uploaded' : 'pending';
+    return {
+      ...entry,
+      files,
+      status,
+    };
+  });
+  fs.rmSync(consistencyAuditFile(projectId), { force: true });
+  return saveMaterialChecklist(projectId, {
+    ...checklist,
+    items: updatedItems,
+    updatedAt: nowIso(),
+  });
+}
+
+function materialRelevanceScore(item: ProjectMaterialItem, sectionPath: string[]): number {
+  const haystack = [item.title, item.description, item.purpose, item.suggestedSection].join(' ').toLowerCase();
+  let score = 0;
+  for (const part of sectionPath) {
+    const value = part.toLowerCase();
+    if (!value) continue;
+    if (haystack.includes(value)) score += 3;
+    for (const token of value.split(/[^\p{L}\p{N}]+/u).filter((token) => token.length >= 2)) {
+      if (haystack.includes(token)) score += 1;
+    }
+  }
+  if (item.required) score += 1;
+  return score;
+}
+
+export function renderProjectMaterialsForPrompt(projectId: string, sectionPath: string[]): string {
+  const checklist = getMaterialChecklist(projectId);
+  if (!checklist || checklist.items.length === 0) return '（尚未生成资料补齐清单）';
+  const uploadedItems = checklist.items.filter((item) => item.files.length > 0);
+  if (uploadedItems.length === 0) return '（资料清单已生成，但客户尚未上传材料）';
+
+  return uploadedItems
+    .map((item) => ({ item, score: materialRelevanceScore(item, sectionPath) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10)
+    .map(({ item }) => {
+      const files = item.files
+        .slice(0, 3)
+        .map((file) => {
+          const text = file.textPath ? readFirstExisting([path.join(projectDir(projectId), file.textPath)]) : '';
+          const clipped = (text ?? '').slice(0, 1800);
+          return [
+            `文件：${file.fileName}（${file.fileType}，${file.charCount} 字）`,
+            clipped || '（解析文本为空）',
+          ].join('\n');
+        })
+        .join('\n\n');
+      return [
+        `## ${item.title}`,
+        `用途：${item.purpose}`,
+        item.suggestedSection ? `建议章节：${item.suggestedSection}` : '',
+        item.sourceClause ? `依据：${item.sourceClause}` : '',
+        files,
+      ]
+        .filter(Boolean)
+        .join('\n');
+    })
+    .join('\n\n---\n\n');
 }
 
 export function saveConsistencyAudit(id: string, audit: ConsistencyAudit): ConsistencyAudit | null {

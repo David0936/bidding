@@ -24,6 +24,11 @@ import {
   getGlobalFacts,
   saveResponseMatrix,
   getResponseMatrix,
+  saveMaterialChecklist,
+  getMaterialChecklist,
+  saveMaterialFile,
+  deleteMaterialFile,
+  renderProjectMaterialsForPrompt,
   saveConsistencyAudit,
   getConsistencyAudit,
   saveSeal,
@@ -38,9 +43,10 @@ import { generateOutline } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
 import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysisService.js';
 import { generateResponseMatrix } from '../projects/responseMatrix/responseMatrixService.js';
+import { generateMaterialChecklist } from '../projects/materialChecklist/materialChecklistService.js';
 import { auditConsistency } from '../projects/audit/consistencyAuditService.js';
 import { listKnowledgeItems } from '../knowledge/knowledgeStore.js';
-import { setNodeContent } from '../projects/outline/treeUtils.js';
+import { findNode, setNodeContent } from '../projects/outline/treeUtils.js';
 import { buildDocx, buildMarkdown, buildPdf } from '../projects/export/exportService.js';
 import { loadConfig } from '../store/configStore.js';
 import { errorMessage, errorStatus } from './errors.js';
@@ -381,7 +387,7 @@ projectsRouter.post('/:id/outline/generate', async (req, res) => {
 projectsRouter.put('/:id/outline', (req, res) => {
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
-  const incoming = req.body as Outline;
+  const incoming = req.body as Outline & { clearResponseMatrix?: boolean };
   if (!incoming || !Array.isArray(incoming.nodes)) {
     return res.status(400).json({ message: '目录数据格式不正确' });
   }
@@ -390,7 +396,7 @@ projectsRouter.put('/:id/outline', (req, res) => {
     nodes: incoming.nodes,
     updatedAt: new Date().toISOString(),
   };
-  saveOutline(req.params.id, outline);
+  saveOutline(req.params.id, outline, { clearResponseMatrix: incoming.clearResponseMatrix !== false });
   res.json(outline);
 });
 
@@ -473,6 +479,81 @@ projectsRouter.post('/:id/response-matrix/generate', async (req, res) => {
   }
 });
 
+// 读取客户资料补齐清单
+projectsRouter.get('/:id/material-checklist', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const checklist = getMaterialChecklist(req.params.id);
+  if (!checklist) return res.status(404).json({ message: '尚未生成资料补齐清单' });
+  res.json(checklist);
+});
+
+// AI 生成/刷新客户资料补齐清单
+projectsRouter.post('/:id/material-checklist/generate', async (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const tenderText = getTenderText(req.params.id);
+  if (!tenderText) return res.status(400).json({ message: '请先上传并解析招标文件' });
+
+  try {
+    const checklist = await generateMaterialChecklist(
+      loadConfig(),
+      tenderText,
+      project.name,
+      getAnalysis(req.params.id),
+      getGlobalFacts(req.params.id),
+      getResponseMatrix(req.params.id),
+      getOutline(req.params.id),
+    );
+    saveMaterialChecklist(req.params.id, checklist);
+    res.json(checklist);
+  } catch (err) {
+    res.status(errorStatus(err)).json({ message: errorMessage(err, '资料清单生成失败') });
+  }
+});
+
+// 按资料项上传客户补充材料
+projectsRouter.post('/:id/material-checklist/:itemId/files', upload.single('file'), async (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  if (!req.file) return res.status(400).json({ message: '未收到文件' });
+  const checklist = getMaterialChecklist(req.params.id);
+  if (!checklist) return res.status(404).json({ message: '请先生成资料补齐清单' });
+  const item = checklist.items.find((entry) => entry.id === req.params.itemId);
+  if (!item) return res.status(404).json({ message: '资料项不存在' });
+
+  try {
+    const parsed = await parseDocument(req.file.buffer, req.file.originalname);
+    if (!item.acceptedFileTypes.includes(parsed.fileType)) {
+      return res.status(400).json({ message: '该资料项暂不接受此文件格式。' });
+    }
+    const updated = saveMaterialFile(
+      req.params.id,
+      item.id,
+      {
+        fileName: req.file.originalname,
+        fileType: parsed.fileType,
+        charCount: parsed.text.length,
+      },
+      req.file.buffer,
+      parsed.text,
+    );
+    if (!updated) return res.status(404).json({ message: '资料项不存在' });
+    res.json(updated);
+  } catch (err) {
+    res.status(errorStatus(err)).json({ message: errorMessage(err, '资料解析或保存失败') });
+  }
+});
+
+// 删除某个资料项下的上传文件
+projectsRouter.delete('/:id/material-checklist/:itemId/files/:fileId', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const updated = deleteMaterialFile(req.params.id, req.params.itemId, req.params.fileId);
+  if (!updated) return res.status(404).json({ message: '资料文件不存在' });
+  res.json(updated);
+});
+
 // 读取全文一致性审计结果
 projectsRouter.get('/:id/consistency-audit', (req, res) => {
   const project = findOwnedProject(req.params.id, req);
@@ -513,6 +594,8 @@ projectsRouter.post('/:id/content/generate-section', async (req, res) => {
   if (!outline) return res.status(400).json({ message: '请先生成目录' });
   const nodeId = req.body?.nodeId as string | undefined;
   if (!nodeId) return res.status(400).json({ message: '缺少 nodeId' });
+  const target = findNode(outline.nodes, nodeId);
+  if (!target) return res.status(400).json({ message: '目录中找不到该章节，请刷新后重试。' });
 
   try {
     const result = await generateSectionContent(
@@ -525,6 +608,7 @@ projectsRouter.post('/:id/content/generate-section', async (req, res) => {
       listKnowledgeItems(currentAccountId(req)),
       getOriginalPlanText(req.params.id),
       getResponseMatrix(req.params.id),
+      renderProjectMaterialsForPrompt(req.params.id, target.path),
     );
     // 写回正文并落盘
     const updated: Outline = {

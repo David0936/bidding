@@ -39,6 +39,7 @@ export async function generateSectionContent(
   knowledgeItems: KnowledgeItem[] = [],
   originalPlanText: string | null = null,
   responseMatrix: ResponseMatrix | null = null,
+  materialContext = '（尚未生成资料补齐清单）',
 ): Promise<SectionContentResult> {
   const target = findNode(outline.nodes, nodeId);
   if (!target) {
@@ -82,6 +83,9 @@ export async function generateSectionContent(
     '【可参考的企业知识库内容】',
     renderKnowledgeDetails(knowledgeItems),
     '',
+    '【客户按资料清单上传的补充材料】',
+    materialContext,
+    '',
     '【已有技术方案扩写依据】',
     originalPlanBlock,
     '',
@@ -92,6 +96,7 @@ export async function generateSectionContent(
     '请直接输出该章节的正文 Markdown，篇幅约 400~800 字（视章节重要性可适当增减）。',
     '如果响应矩阵中的 suggestedSection、requirement 或 responseStrategy 与当前章节相关，必须优先覆盖；尤其不能遗漏 critical/high、missing/risk/partial 状态的要求项。',
     '正文要体现“逐条响应”的投标意识：对废标底线、评分点、交付服务、验收、质保、培训、报价边界、技术参数等要求给出明确承诺或实现方式。',
+    '如果客户上传的补充材料与当前章节相关，应优先吸收其中的真实企业信息、资质、业绩、人员、设备、报价依据、技术参数或证明材料；不得编造材料中没有的证书编号、金额、日期或业绩。',
     '如果正文涉及上述全局事实，必须严格沿用事实内容，不得改写成相互冲突的周期、地点、金额、范围、服务承诺或主体名称。',
     '如果知识库内容与当前章节相关，可以吸收其方法、能力、案例和表述风格；不得引用与招标文件或全局事实冲突的内容。',
   ].join('\n');

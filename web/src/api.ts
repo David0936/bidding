@@ -18,6 +18,7 @@ import type {
   KnowledgeUploadResult,
   Outline,
   Project,
+  ProjectMaterialChecklist,
   RedactedAIConfig,
   RejectionCheckResult,
   ResponseMatrix,
@@ -362,10 +363,10 @@ export const api = {
   generateOutline(id: string): Promise<Outline> {
     return jsonFetch<Outline>(`/api/projects/${id}/outline/generate`, { method: 'POST' });
   },
-  saveOutline(id: string, outline: Outline): Promise<Outline> {
+  saveOutline(id: string, outline: Outline, options?: { clearResponseMatrix?: boolean }): Promise<Outline> {
     return jsonFetch<Outline>(`/api/projects/${id}/outline`, {
       method: 'PUT',
-      body: JSON.stringify(outline),
+      body: JSON.stringify({ ...outline, clearResponseMatrix: options?.clearResponseMatrix }),
     });
   },
 
@@ -392,6 +393,31 @@ export const api = {
   generateResponseMatrix(id: string): Promise<ResponseMatrix> {
     return jsonFetch<ResponseMatrix>(`/api/projects/${id}/response-matrix/generate`, {
       method: 'POST',
+    });
+  },
+
+  // ===== 客户资料补齐清单 =====
+  getMaterialChecklist(id: string): Promise<ProjectMaterialChecklist> {
+    return jsonFetch<ProjectMaterialChecklist>(`/api/projects/${id}/material-checklist`);
+  },
+  generateMaterialChecklist(id: string): Promise<ProjectMaterialChecklist> {
+    return jsonFetch<ProjectMaterialChecklist>(`/api/projects/${id}/material-checklist/generate`, {
+      method: 'POST',
+    });
+  },
+  async uploadMaterialFile(id: string, itemId: string, file: File): Promise<ProjectMaterialChecklist> {
+    const form = new FormData();
+    form.append('file', file);
+    const resp = await authFetch(`/api/projects/${id}/material-checklist/${itemId}/files`, {
+      method: 'POST',
+      body: form,
+    });
+    await throwIfNotOk(resp);
+    return resp.json() as Promise<ProjectMaterialChecklist>;
+  },
+  deleteMaterialFile(id: string, itemId: string, fileId: string): Promise<ProjectMaterialChecklist> {
+    return jsonFetch<ProjectMaterialChecklist>(`/api/projects/${id}/material-checklist/${itemId}/files/${fileId}`, {
+      method: 'DELETE',
     });
   },
 
