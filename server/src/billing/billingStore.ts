@@ -12,6 +12,7 @@ import type {
   PaymentProvider,
   PricingPolicy,
   TokenUsage,
+  BillingAccountStatus,
 } from './types.js';
 
 const BILLING_FILE = path.join(BILLING_DIR, 'ledger.json');
@@ -61,7 +62,15 @@ function readState(): BillingState {
   try {
     const parsed = JSON.parse(fs.readFileSync(BILLING_FILE, 'utf8')) as Partial<BillingState>;
     return {
-      accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
+      accounts: Array.isArray(parsed.accounts)
+        ? parsed.accounts.map((account) => ({
+            ...account,
+            ownerEmail: account.ownerEmail ?? undefined,
+            ownerUserId: account.ownerUserId ?? undefined,
+            adminNote: account.adminNote ?? undefined,
+            status: account.status ?? 'active',
+          }))
+        : [],
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
       orders: Array.isArray(parsed.orders) ? parsed.orders : [],
     };
@@ -95,15 +104,31 @@ function expirePendingOrders(state: BillingState): void {
   if (changed) writeState(state);
 }
 
-function createAccount(accountId: string, state: BillingState, name?: string): BillingAccount {
+interface AccountIdentityInput {
+  name?: string;
+  ownerEmail?: string;
+  ownerUserId?: string;
+}
+
+function normalizeIdentity(input?: string | AccountIdentityInput): AccountIdentityInput {
+  if (!input) return {};
+  if (typeof input === 'string') return { name: input };
+  return input;
+}
+
+function createAccount(accountId: string, state: BillingState, input?: string | AccountIdentityInput): BillingAccount {
   const timestamp = nowIso();
   const pricing = getPricingPolicy();
   const trialCredits = roundCredits(pricing.trialCredits);
+  const identity = normalizeIdentity(input);
   const account: BillingAccount = {
     id: accountId,
-    name: name?.trim() || (accountId === DEFAULT_ACCOUNT_ID ? '默认客户账户' : accountId),
+    ownerEmail: identity.ownerEmail?.trim().toLowerCase() || undefined,
+    ownerUserId: identity.ownerUserId?.trim() || undefined,
+    name: identity.name?.trim() || (accountId === DEFAULT_ACCOUNT_ID ? '默认客户账户' : accountId),
     planName: '按量充值',
     status: 'active',
+    adminNote: undefined,
     balanceCredits: trialCredits,
     totalRechargedCredits: trialCredits,
     totalConsumedCredits: 0,
@@ -127,21 +152,37 @@ function createAccount(accountId: string, state: BillingState, name?: string): B
   return account;
 }
 
-function getOrCreateAccount(accountId: string, state: BillingState, name?: string): BillingAccount {
+function getOrCreateAccount(
+  accountId: string,
+  state: BillingState,
+  input?: string | AccountIdentityInput,
+): BillingAccount {
   const existing = state.accounts.find((item) => item.id === accountId);
+  const identity = normalizeIdentity(input);
   if (existing) {
-    if (name?.trim() && (!existing.name || existing.name === existing.id)) {
-      existing.name = name.trim();
-      existing.updatedAt = nowIso();
+    let changed = false;
+    if (identity.name?.trim() && (!existing.name || existing.name === existing.id)) {
+      existing.name = identity.name.trim();
+      changed = true;
     }
+    if (identity.ownerEmail?.trim() && existing.ownerEmail !== identity.ownerEmail.trim().toLowerCase()) {
+      existing.ownerEmail = identity.ownerEmail.trim().toLowerCase();
+      changed = true;
+    }
+    if (identity.ownerUserId?.trim() && existing.ownerUserId !== identity.ownerUserId.trim()) {
+      existing.ownerUserId = identity.ownerUserId.trim();
+      changed = true;
+    }
+    if (!existing.status) existing.status = 'active';
+    if (changed) existing.updatedAt = nowIso();
     return existing;
   }
-  return createAccount(accountId, state, name);
+  return createAccount(accountId, state, identity);
 }
 
-export function ensureBillingAccount(accountId: string, name?: string): BillingAccount {
+export function ensureBillingAccount(accountId: string, identity?: string | AccountIdentityInput): BillingAccount {
   const state = readState();
-  const account = getOrCreateAccount(accountId, state, name);
+  const account = getOrCreateAccount(accountId, state, identity);
   writeState(state);
   return account;
 }
@@ -183,6 +224,34 @@ export function getAdminBillingOverview(): AdminBillingOverview {
       paidAmountCents: paidOrders.reduce((sum, order) => sum + order.amountCents, 0),
     },
   };
+}
+
+export function updateAdminBillingAccount(
+  accountId: string,
+  input: {
+    status?: BillingAccountStatus;
+    adminNote?: string;
+    name?: string;
+  },
+): AdminBillingOverview {
+  const state = readState();
+  const account = state.accounts.find((item) => item.id === accountId);
+  if (!account) throw new BillingError('客户账户不存在。', 404);
+
+  const status = input.status;
+  if (status && !['active', 'suspended'].includes(status)) {
+    throw new BillingError('账户状态不正确。', 400);
+  }
+  if (status) account.status = status;
+  if (typeof input.adminNote === 'string') {
+    account.adminNote = input.adminNote.trim().slice(0, 500) || undefined;
+  }
+  if (typeof input.name === 'string' && input.name.trim()) {
+    account.name = input.name.trim().slice(0, 80);
+  }
+  account.updatedAt = nowIso();
+  writeState(state);
+  return getAdminBillingOverview();
 }
 
 interface RechargeInput {

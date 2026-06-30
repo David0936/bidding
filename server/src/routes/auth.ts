@@ -22,13 +22,21 @@ authRouter.post('/register', (req, res) => {
     password: req.body?.password,
     displayName: req.body?.displayName,
   });
-  ensureBillingAccount(result.user.accountId, result.user.displayName);
+  ensureBillingAccount(result.user.accountId, {
+    name: result.user.displayName,
+    ownerEmail: result.user.email,
+    ownerUserId: result.user.id,
+  });
   res.json(result);
 });
 
 authRouter.post('/login', (req, res) => {
   const result = loginUser({ email: req.body?.email, password: req.body?.password });
-  ensureBillingAccount(result.user.accountId, result.user.displayName);
+  ensureBillingAccount(result.user.accountId, {
+    name: result.user.displayName,
+    ownerEmail: result.user.email,
+    ownerUserId: result.user.id,
+  });
   res.json(result);
 });
 

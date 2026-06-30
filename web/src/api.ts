@@ -7,6 +7,7 @@ import type {
   AuthMeResult,
   AuthProfile,
   AuthResult,
+  BillingAccountStatus,
   BillingOverview,
   ConsistencyAudit,
   DuplicateCheckResult,
@@ -243,6 +244,15 @@ export const api = {
     return adminJsonFetch<AdminBillingOverview>('/api/billing/admin/allocate', {
       method: 'POST',
       body: JSON.stringify({ accountId, credits, description }),
+    });
+  },
+  adminUpdateAccount(
+    accountId: string,
+    patch: { status?: BillingAccountStatus; adminNote?: string; name?: string },
+  ): Promise<AdminBillingOverview> {
+    return adminJsonFetch<AdminBillingOverview>(`/api/billing/admin/accounts/${accountId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
     });
   },
 

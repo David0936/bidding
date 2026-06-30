@@ -6,9 +6,12 @@ export type PaymentProvider = 'manual' | 'mock' | 'wechat' | 'alipay' | 'stripe'
 
 export interface BillingAccount {
   id: string;
+  ownerUserId?: string;
+  ownerEmail?: string;
   name: string;
   planName: string;
   status: BillingAccountStatus;
+  adminNote?: string;
   balanceCredits: number;
   totalRechargedCredits: number;
   totalConsumedCredits: number;

@@ -87,14 +87,18 @@ export interface AdminMeResult {
 
 // ===== 额度 / 订阅计费 =====
 export type BillingTransactionType = 'trial' | 'recharge' | 'consume' | 'adjust' | 'refund';
+export type BillingAccountStatus = 'active' | 'suspended';
 export type PaymentOrderStatus = 'pending' | 'paid' | 'cancelled' | 'expired';
 export type PaymentProvider = 'manual' | 'mock' | 'wechat' | 'alipay' | 'stripe' | 'bank_transfer';
 
 export interface BillingAccount {
   id: string;
+  ownerUserId?: string;
+  ownerEmail?: string;
   name: string;
   planName: string;
-  status: 'active' | 'suspended';
+  status: BillingAccountStatus;
+  adminNote?: string;
   balanceCredits: number;
   totalRechargedCredits: number;
   totalConsumedCredits: number;

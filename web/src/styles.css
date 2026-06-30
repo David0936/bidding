@@ -612,6 +612,34 @@ p {
   font-weight: 700;
 }
 
+.admin-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 920px;
+}
+
+.admin-actions {
+  margin-bottom: var(--space-4);
+}
+
+.admin-account-head,
+.admin-account-row {
+  grid-template-columns:
+    minmax(170px, 1.2fr)
+    minmax(74px, 0.45fr)
+    minmax(90px, 0.55fr)
+    minmax(130px, 0.8fr)
+    minmax(150px, 1fr);
+}
+
+.admin-account-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-account-row .badge {
+  width: max-content;
+}
+
 .order-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2068,6 +2096,7 @@ p {
   .file-code-list,
   .kb-layout,
   .billing-summary,
+  .admin-summary,
   .billing-metrics,
   .export-grid {
     grid-template-columns: 1fr;

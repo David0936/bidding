@@ -10,6 +10,7 @@ import {
   getAdminBillingOverview,
   getBillingOverview,
   recordRecharge,
+  updateAdminBillingAccount,
 } from '../billing/billingStore.js';
 import type { PaymentProvider } from '../billing/types.js';
 
@@ -68,6 +69,18 @@ billingRouter.post('/admin/allocate', requireAdmin, (req, res) => {
     referenceId,
   });
   res.json(getAdminBillingOverview());
+});
+
+billingRouter.patch('/admin/accounts/:id', requireAdmin, (req, res) => {
+  const accountId = String(req.params.id ?? '').trim();
+  if (!accountId) return res.status(400).json({ message: '缺少客户账户 ID。' });
+  res.json(
+    updateAdminBillingAccount(accountId, {
+      status: req.body?.status,
+      adminNote: typeof req.body?.adminNote === 'string' ? req.body.adminNote : undefined,
+      name: typeof req.body?.name === 'string' ? req.body.name : undefined,
+    }),
+  );
 });
 
 billingRouter.get('/account', (_req, res) => {
