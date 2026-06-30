@@ -175,6 +175,7 @@ export interface AdminBillingOverview {
 
 // ===== 标书项目 =====
 export type TenderFileType = 'pdf' | 'docx' | 'txt' | 'md';
+export type BidSectionMode = 'single' | 'multiple';
 
 export interface TenderDoc {
   fileName: string;
@@ -183,6 +184,15 @@ export interface TenderDoc {
   uploadedAt: string;
   markdownPath?: string;
   originalMarkdownPath?: string;
+}
+
+export interface BidSection {
+  id: string;
+  title: string;
+  code?: string;
+  startLine: number;
+  endLine: number;
+  summary?: string;
 }
 
 export interface ElectronicSeal {
@@ -209,6 +219,10 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   tender: TenderDoc | null;
+  bidSectionMode: BidSectionMode;
+  bidSections: BidSection[];
+  selectedBidSectionId: string | null;
+  selectedBidSectionTitle: string | null;
   originalPlan: TenderDoc | null;
   seal: ElectronicSeal | null;
 }

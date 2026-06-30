@@ -1054,6 +1054,97 @@ p {
   margin: 0;
 }
 
+.bid-section-box {
+  margin-top: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--space-4);
+}
+
+.bid-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.bid-section-head h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+
+.bid-section-head .hint {
+  margin: 0;
+}
+
+.bid-section-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.bid-section-controls select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+}
+
+.bid-section-controls select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.bid-section-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.bid-section-item {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: var(--space-3);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.bid-section-item:hover,
+.bid-section-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.bid-section-item strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.bid-section-item span {
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .compact-dropzone {
   display: flex;
   align-items: center;
@@ -2047,9 +2138,30 @@ p {
   }
 
   .original-plan-head,
+  .bid-section-head,
+  .bid-section-controls,
   .compact-dropzone {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .bid-section-head .actions,
+  .bid-section-controls,
+  .bid-section-controls .btn,
+  .bid-section-list {
+    width: 100%;
+  }
+
+  .bid-section-controls {
+    display: flex;
+  }
+
+  .bid-section-controls .btn {
+    justify-content: center;
+  }
+
+  .bid-section-list {
+    grid-template-columns: 1fr;
   }
 
   .compact-dropzone strong {

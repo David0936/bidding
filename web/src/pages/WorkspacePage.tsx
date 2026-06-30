@@ -212,6 +212,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadingOriginalPlan, setUploadingOriginalPlan] = useState(false);
+  const [sectionDraftId, setSectionDraftId] = useState('');
+  const [sectionAction, setSectionAction] = useState<'detect' | 'select' | 'reset' | ''>('');
   const [error, setError] = useState('');
   const [preview, setPreview] = useState('');
   const [originalPlanPreview, setOriginalPlanPreview] = useState('');
@@ -253,6 +255,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [activePlacementId, setActivePlacementId] = useState('');
 
   const current = projects.find((p) => p.id === currentId) ?? null;
+  const currentSectionKey = current?.bidSections.map((section) => section.id).join('|') ?? '';
 
   async function refresh(selectId?: string) {
     const list = await api.listProjects();
@@ -261,12 +264,43 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     else if (!list.find((p) => p.id === currentId)) setCurrentId(list[0]?.id ?? '');
   }
 
+  function mergeProject(project: Project) {
+    setProjects((items) => {
+      const exists = items.some((item) => item.id === project.id);
+      const next = exists ? items.map((item) => (item.id === project.id ? project : item)) : [project, ...items];
+      return next.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    });
+    setCurrentId(project.id);
+  }
+
+  function clearTenderDependentState(includeAnalysis: boolean) {
+    if (includeAnalysis) setAnalysis(null);
+    setOutline(null);
+    setOutlineDirty(false);
+    setFacts(null);
+    setFactsDirty(false);
+    setAudit(null);
+  }
+
+  async function reloadTenderPreview(projectId: string) {
+    try {
+      const res = await api.getTenderText(projectId);
+      setPreview(res.text.slice(0, 4000));
+    } catch {
+      setPreview('');
+    }
+  }
+
   useEffect(() => {
     refresh()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setSectionDraftId(current?.selectedBidSectionId ?? current?.bidSections[0]?.id ?? '');
+  }, [currentId, current?.selectedBidSectionId, currentSectionKey]);
 
   useEffect(() => {
     return () => {
@@ -555,12 +589,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     try {
       const res = await api.uploadTender(current.id, file);
       setPreview(res.preview);
-      setAnalysis(null);
-      setOutline(null);
-      setOutlineDirty(false);
-      setFacts(null);
-      setFactsDirty(false);
-      setAudit(null);
+      clearTenderDependentState(true);
       await refresh(current.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -580,11 +609,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     try {
       const res = await api.uploadOriginalPlan(current.id, file);
       setOriginalPlanPreview(res.preview);
-      setOutline(null);
-      setOutlineDirty(false);
-      setFacts(null);
-      setFactsDirty(false);
-      setAudit(null);
+      clearTenderDependentState(false);
       await refresh(current.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -600,14 +625,58 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     try {
       await api.deleteOriginalPlan(current.id);
       setOriginalPlanPreview('');
-      setOutline(null);
-      setOutlineDirty(false);
-      setFacts(null);
-      setFactsDirty(false);
-      setAudit(null);
+      clearTenderDependentState(false);
       await refresh(current.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleDetectBidSections() {
+    if (!current?.tender) return;
+    setSectionAction('detect');
+    setError('');
+    try {
+      const project = await api.detectBidSections(current.id);
+      mergeProject(project);
+      setSectionDraftId(project.selectedBidSectionId ?? project.bidSections[0]?.id ?? '');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSectionAction('');
+    }
+  }
+
+  async function handleSelectBidSection() {
+    if (!current || !sectionDraftId) return;
+    setSectionAction('select');
+    setError('');
+    try {
+      const project = await api.selectBidSection(current.id, sectionDraftId);
+      mergeProject(project);
+      clearTenderDependentState(true);
+      await reloadTenderPreview(project.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSectionAction('');
+    }
+  }
+
+  async function handleResetBidSection() {
+    if (!current) return;
+    setSectionAction('reset');
+    setError('');
+    try {
+      const project = await api.resetBidSection(current.id);
+      mergeProject(project);
+      setSectionDraftId(project.bidSections[0]?.id ?? '');
+      clearTenderDependentState(true);
+      await reloadTenderPreview(project.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSectionAction('');
     }
   }
 
@@ -786,6 +855,11 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const activePlacement = sealState.placements.find((placement) => placement.id === activePlacementId) ?? null;
   const visibleSealPlacements = sealState.placements.filter((placement) => placement.page === sealPage);
   const sealSizeValue = activePlacement?.widthRatio ?? sealWidth;
+  const selectedBidSection = current?.selectedBidSectionId
+    ? current.bidSections.find((section) => section.id === current.selectedBidSectionId) ?? null
+    : null;
+  const hasBidSections = (current?.bidSections.length ?? 0) >= 2;
+  const canApplySection = Boolean(sectionDraftId && sectionDraftId !== current?.selectedBidSectionId);
 
   return (
     <div>
@@ -914,6 +988,87 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                   <IconDownload />
                   Markdown
                 </button>
+              </div>
+            )}
+
+            {current.tender && (
+              <div className="bid-section-box">
+                <div className="bid-section-head">
+                  <div>
+                    <h3>投标范围</h3>
+                    <p className="hint">
+                      {hasBidSections
+                        ? `已识别 ${current.bidSections.length} 个标段/分包，可指定后续生成范围。`
+                        : '当前按完整招标文件生成。'}
+                    </p>
+                  </div>
+                  <div className="actions">
+                    {selectedBidSection && (
+                      <span className="badge badge-on">
+                        <IconCheckCircle />
+                        {selectedBidSection.title}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="mini-btn"
+                      onClick={handleDetectBidSections}
+                      disabled={sectionAction === 'detect'}
+                    >
+                      <IconSettings />
+                      {sectionAction === 'detect' ? '识别中…' : '重新识别'}
+                    </button>
+                  </div>
+                </div>
+
+                {hasBidSections ? (
+                  <>
+                    <div className="bid-section-controls">
+                      <select value={sectionDraftId} onChange={(e) => setSectionDraftId(e.target.value)}>
+                        {current.bidSections.map((section) => (
+                          <option key={section.id} value={section.id}>
+                            {section.title}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={handleSelectBidSection}
+                        disabled={!canApplySection || sectionAction === 'select'}
+                      >
+                        <IconCheckCircle />
+                        {sectionAction === 'select' ? '应用中…' : '应用标段'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={handleResetBidSection}
+                        disabled={!current.selectedBidSectionId || sectionAction === 'reset'}
+                      >
+                        <IconEye />
+                        {sectionAction === 'reset' ? '恢复中…' : '使用全文'}
+                      </button>
+                    </div>
+                    <div className="bid-section-list">
+                      {current.bidSections.map((section) => (
+                        <button
+                          key={section.id}
+                          type="button"
+                          className={`bid-section-item ${sectionDraftId === section.id ? 'active' : ''}`}
+                          onClick={() => setSectionDraftId(section.id)}
+                        >
+                          <strong>{section.title}</strong>
+                          <span>
+                            原文第 {section.startLine}-{section.endLine} 行
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-tip">未识别到多个明确标段/分包，后续将按全文处理。</div>
+                )}
               </div>
             )}
 

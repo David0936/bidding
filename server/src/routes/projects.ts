@@ -8,6 +8,9 @@ import {
   updateProject,
   deleteProject,
   saveTender,
+  saveBidSections,
+  selectBidSection,
+  resetBidSection,
   getTenderText,
   getTenderOriginalText,
   saveOriginalPlan,
@@ -28,6 +31,7 @@ import {
   getSealPlacements,
 } from '../projects/projectStore.js';
 import { parseDocument, detectFileType } from '../projects/docParser.js';
+import { detectBidSections } from '../projects/bidSections.js';
 import { generateOutline } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
 import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysisService.js';
@@ -177,6 +181,40 @@ projectsRouter.get('/:id/original-plan-markdown', (req, res) => {
   res.json({ markdown });
 });
 
+// 自动识别多标段/分包
+projectsRouter.post('/:id/bid-sections/detect', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const markdown = getTenderOriginalText(req.params.id);
+  if (markdown === null) return res.status(400).json({ message: '请先上传并解析招标文件' });
+  const updated = saveBidSections(req.params.id, detectBidSections(markdown), currentAccountId(req));
+  if (!updated) return res.status(404).json({ message: '项目不存在' });
+  res.json(updated);
+});
+
+// 选择某个标段/分包作为当前投标范围
+projectsRouter.post('/:id/bid-sections/select', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const sectionId = String(req.body?.sectionId ?? '').trim();
+  if (!sectionId) return res.status(400).json({ message: '缺少标段 ID' });
+  if (!project.bidSections.some((section) => section.id === sectionId)) {
+    return res.status(400).json({ message: '标段不存在，请重新识别后再选择' });
+  }
+  const updated = selectBidSection(req.params.id, sectionId, currentAccountId(req));
+  if (!updated) return res.status(400).json({ message: '无法应用该标段，请重新上传招标文件后再试' });
+  res.json(updated);
+});
+
+// 恢复使用完整招标文件
+projectsRouter.post('/:id/bid-sections/reset', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const updated = resetBidSection(req.params.id, currentAccountId(req));
+  if (!updated) return res.status(400).json({ message: '无法恢复全文，请重新上传招标文件后再试' });
+  res.json(updated);
+});
+
 // 读取已保存的招标文件关键项解析
 projectsRouter.get('/:id/analysis', (req, res) => {
   const project = findOwnedProject(req.params.id, req);
@@ -243,7 +281,9 @@ projectsRouter.post('/:id/tender', upload.single('file'), async (req, res) => {
       charCount: text.length,
       uploadedAt: new Date().toISOString(),
     };
-    const updated = saveTender(req.params.id, tender, text, req.file.buffer, fileType);
+    const saved = saveTender(req.params.id, tender, text, req.file.buffer, fileType);
+    if (!saved) return res.status(404).json({ message: '项目不存在' });
+    const updated = saveBidSections(req.params.id, detectBidSections(text), currentAccountId(req)) ?? saved;
     res.json({ project: updated, charCount: text.length, preview: text.slice(0, 2000) });
   } catch (err) {
     res.status(errorStatus(err)).json({ message: errorMessage(err, '解析失败') });

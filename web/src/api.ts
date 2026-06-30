@@ -306,6 +306,18 @@ export const api = {
   deleteOriginalPlan(id: string): Promise<Project> {
     return jsonFetch<Project>(`/api/projects/${id}/original-plan`, { method: 'DELETE' });
   },
+  detectBidSections(id: string): Promise<Project> {
+    return jsonFetch<Project>(`/api/projects/${id}/bid-sections/detect`, { method: 'POST' });
+  },
+  selectBidSection(id: string, sectionId: string): Promise<Project> {
+    return jsonFetch<Project>(`/api/projects/${id}/bid-sections/select`, {
+      method: 'POST',
+      body: JSON.stringify({ sectionId }),
+    });
+  },
+  resetBidSection(id: string): Promise<Project> {
+    return jsonFetch<Project>(`/api/projects/${id}/bid-sections/reset`, { method: 'POST' });
+  },
 
   // ===== 招标文件关键项解析 =====
   getAnalysis(id: string): Promise<TenderAnalysis> {

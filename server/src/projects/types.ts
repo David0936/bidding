@@ -17,6 +17,22 @@ export interface TenderDoc {
   uploadedAt: string;
 }
 
+export type BidSectionMode = 'single' | 'multiple';
+
+export interface BidSection {
+  id: string;
+  /** 标段/分包标题，例如“标段一：储能系统采购” */
+  title: string;
+  /** 标段编号或序号 */
+  code?: string;
+  /** 在原始 Markdown 中的起始行，从 1 开始 */
+  startLine: number;
+  /** 在原始 Markdown 中的结束行，从 1 开始 */
+  endLine: number;
+  /** 标题后的简短描述 */
+  summary?: string;
+}
+
 export interface ElectronicSeal {
   /** 原始印章图片名 */
   fileName: string;
@@ -53,6 +69,13 @@ export interface Project {
   updatedAt: string;
   /** 招标文件解析结果（未上传时为 null） */
   tender: TenderDoc | null;
+  /** 招标文件是否识别出多标段/分包 */
+  bidSectionMode: BidSectionMode;
+  /** 从原始招标文件中识别出的标段/分包列表 */
+  bidSections: BidSection[];
+  /** 当前选择的投标范围；null 表示使用全文 */
+  selectedBidSectionId: string | null;
+  selectedBidSectionTitle: string | null;
   /** 已有技术方案解析结果（用于扩写模式；未上传时为 null） */
   originalPlan: TenderDoc | null;
   /** 电子印章图片元数据（未上传时为 null） */

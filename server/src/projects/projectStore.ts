@@ -1,7 +1,7 @@
 // 文件式项目存储。每个项目一个目录：
 //   data/projects/<id>/project.json   元数据
 //   data/projects/<id>/tender-original.md 原始完整招标文件 Markdown
-//   data/projects/<id>/tender.md     当前招标文件 Markdown 工作稿
+//   data/projects/<id>/tender.md     当前招标文件 Markdown 工作稿（可按标段聚焦）
 //   data/projects/<id>/original-plan.md 已有方案 Markdown 工作稿
 //   data/projects/<id>/original.<ext> 上传的原始文件
 //   data/projects/<id>/seal-image.bin 电子印章图片
@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { PROJECTS_DIR, ensureDirs } from '../store/paths.js';
-import type { ElectronicSeal, Project, SealPlacement, TenderDoc } from './types.js';
+import type { BidSection, ElectronicSeal, Project, SealPlacement, TenderDoc } from './types.js';
 import type { Outline } from './outline/types.js';
 import type { GlobalFacts, TenderAnalysis } from './analysis/types.js';
 import type { ConsistencyAudit } from './audit/types.js';
@@ -76,6 +76,11 @@ function readMeta(id: string): Project | null {
   try {
     const raw = fs.readFileSync(metaFile(id), 'utf-8');
     const parsed = JSON.parse(raw) as Project;
+    const bidSections = Array.isArray(parsed.bidSections) ? parsed.bidSections : [];
+    const selectedSection =
+      typeof parsed.selectedBidSectionId === 'string'
+        ? bidSections.find((section) => section.id === parsed.selectedBidSectionId)
+        : null;
     return {
       ...parsed,
       accountId: parsed.accountId ?? DEFAULT_PROJECT_ACCOUNT_ID,
@@ -86,6 +91,10 @@ function readMeta(id: string): Project | null {
             originalMarkdownPath: parsed.tender.originalMarkdownPath ?? 'tender-original.md',
           }
         : null,
+      bidSectionMode: parsed.bidSectionMode ?? (bidSections.length >= 2 ? 'multiple' : 'single'),
+      bidSections,
+      selectedBidSectionId: selectedSection?.id ?? null,
+      selectedBidSectionTitle: selectedSection?.title ?? null,
       originalPlan: parsed.originalPlan
         ? {
             ...parsed.originalPlan,
@@ -121,6 +130,10 @@ export function createProject(name?: string, accountId = DEFAULT_PROJECT_ACCOUNT
     createdAt: ts,
     updatedAt: ts,
     tender: null,
+    bidSectionMode: 'single',
+    bidSections: [],
+    selectedBidSectionId: null,
+    selectedBidSectionTitle: null,
     originalPlan: null,
     seal: null,
   };
@@ -178,10 +191,37 @@ export function deleteProject(id: string, accountId?: string): boolean {
   return true;
 }
 
-function clearGeneratedFiles(id: string): void {
-  for (const file of [outlineFile(id), globalFactsFile(id), consistencyAuditFile(id)]) {
+function clearGeneratedFiles(id: string, options: { includeAnalysis?: boolean } = {}): void {
+  const files = [outlineFile(id), globalFactsFile(id), consistencyAuditFile(id)];
+  if (options.includeAnalysis) files.push(analysisFile(id));
+  for (const file of files) {
     fs.rmSync(file, { force: true });
   }
+}
+
+function buildFocusedTenderMarkdown(original: string, section: BidSection): string {
+  const lines = original.split(/\r?\n/);
+  const startLine = Math.min(Math.max(section.startLine, 1), Math.max(lines.length, 1));
+  const endLine = Math.min(Math.max(section.endLine, startLine), Math.max(lines.length, startLine));
+  const excerpt = lines.slice(startLine - 1, endLine).join('\n').trim();
+  return [
+    '# 投标范围工作稿',
+    '',
+    `> 当前选择：${section.title}`,
+    `> 原文行号：${startLine}-${endLine}`,
+    '> 后续 AI 生成优先围绕该标段/分包；公共条款仍以原始全文为准。',
+    '',
+    '## 当前标段/分包原文',
+    '',
+    excerpt || section.title,
+    '',
+    '---',
+    '',
+    '# 原始招标文件全文（公共条款参考）',
+    '',
+    original.trim(),
+    '',
+  ].join('\n');
 }
 
 /** 保存招标文件解析结果（Markdown 另存为文件，元数据记录摘要） */
@@ -209,6 +249,10 @@ export function saveTender(id: string, tender: TenderDoc, text: string, original
       markdownPath: 'tender.md',
       originalMarkdownPath: 'tender-original.md',
     },
+    bidSectionMode: 'single',
+    bidSections: [],
+    selectedBidSectionId: null,
+    selectedBidSectionTitle: null,
   });
 }
 
@@ -218,6 +262,75 @@ export function getTenderText(id: string): string | null {
 
 export function getTenderOriginalText(id: string): string | null {
   return readFirstExisting([tenderOriginalMarkdownFile(id), tenderMarkdownFile(id), tenderTextFile(id)]);
+}
+
+export function saveBidSections(id: string, sections: BidSection[], accountId?: string): Project | null {
+  const current = getProject(id, accountId);
+  if (!current) return null;
+  const normalized = sections
+    .filter((section) => section.title.trim())
+    .map((section, index) => ({
+      ...section,
+      id: section.id || `section-${index + 1}`,
+      title: section.title.trim(),
+      startLine: Math.max(1, Math.trunc(section.startLine)),
+      endLine: Math.max(Math.trunc(section.endLine), Math.trunc(section.startLine)),
+    }));
+  const selectedSection = current.selectedBidSectionId
+    ? normalized.find((section) => section.id === current.selectedBidSectionId)
+    : null;
+  return updateProject(
+    id,
+    {
+      bidSectionMode: normalized.length >= 2 ? 'multiple' : 'single',
+      bidSections: normalized,
+      selectedBidSectionId: selectedSection?.id ?? null,
+      selectedBidSectionTitle: selectedSection?.title ?? null,
+    },
+    accountId,
+  );
+}
+
+export function selectBidSection(id: string, sectionId: string, accountId?: string): Project | null {
+  const current = getProject(id, accountId);
+  if (!current) return null;
+  const section = current.bidSections.find((item) => item.id === sectionId);
+  if (!section) return null;
+  const original = getTenderOriginalText(id);
+  if (!original) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  fs.writeFileSync(tenderMarkdownFile(id), buildFocusedTenderMarkdown(original, section), 'utf-8');
+  fs.rmSync(tenderTextFile(id), { force: true });
+  clearGeneratedFiles(id, { includeAnalysis: true });
+  return updateProject(
+    id,
+    {
+      selectedBidSectionId: section.id,
+      selectedBidSectionTitle: section.title,
+    },
+    accountId,
+  );
+}
+
+export function resetBidSection(id: string, accountId?: string): Project | null {
+  const current = getProject(id, accountId);
+  if (!current) return null;
+  const original = getTenderOriginalText(id);
+  if (!original) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  fs.writeFileSync(tenderMarkdownFile(id), original, 'utf-8');
+  fs.rmSync(tenderTextFile(id), { force: true });
+  clearGeneratedFiles(id, { includeAnalysis: true });
+  return updateProject(
+    id,
+    {
+      selectedBidSectionId: null,
+      selectedBidSectionTitle: null,
+    },
+    accountId,
+  );
 }
 
 /** 保存已有方案解析结果（用于扩写模式） */
