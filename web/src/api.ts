@@ -361,6 +361,10 @@ export const api = {
     const resp = await authFetch(`/api/projects/${id}/export/docx`);
     await downloadFromResponse(resp, `${fallbackName}.docx`);
   },
+  async downloadMarkdown(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/markdown`);
+    await downloadFromResponse(resp, `${fallbackName}.md`);
+  },
   async downloadPdf(id: string, fallbackName: string): Promise<void> {
     const resp = await authFetch(`/api/projects/${id}/export/pdf`);
     await downloadFromResponse(resp, `${fallbackName}.pdf`);

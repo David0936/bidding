@@ -1,4 +1,4 @@
-// 导出服务：把目录 + 正文渲染为 Word(.docx) / PDF。
+// 导出服务：把目录 + 正文渲染为 Markdown / Word(.docx) / PDF。
 // 正文是 Markdown，这里做基础解析：小标题、无序/有序列表、加粗、普通段落。
 import fs from 'node:fs';
 import {
@@ -154,6 +154,32 @@ function renderNodes(nodes: OutlineNode[], depth: number): Paragraph[] {
     }
   }
   return out;
+}
+
+function normalizeMarkdownBlock(content: string): string {
+  return content.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function renderMarkdownNodes(nodes: OutlineNode[], depth: number): string[] {
+  const chunks: string[] = [];
+  const headingDepth = Math.min(depth + 2, 6);
+
+  for (const node of nodes) {
+    chunks.push(`${'#'.repeat(headingDepth)} ${node.title}`);
+    if (node.children.length > 0) {
+      chunks.push(...renderMarkdownNodes(node.children, depth + 1));
+    } else if (node.content?.trim()) {
+      chunks.push(normalizeMarkdownBlock(node.content));
+    }
+  }
+
+  return chunks;
+}
+
+export function buildMarkdown(outline: Outline): string {
+  const title = outline.title || '投标技术方案';
+  const chunks = [`# ${title}`, ...renderMarkdownNodes(outline.nodes, 0)];
+  return `${chunks.filter((chunk) => chunk.trim()).join('\n\n')}\n`;
 }
 
 export async function buildDocx(outline: Outline): Promise<Buffer> {

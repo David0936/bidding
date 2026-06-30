@@ -34,7 +34,7 @@ import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysi
 import { auditConsistency } from '../projects/audit/consistencyAuditService.js';
 import { listKnowledgeItems } from '../knowledge/knowledgeStore.js';
 import { setNodeContent } from '../projects/outline/treeUtils.js';
-import { buildDocx, buildPdf } from '../projects/export/exportService.js';
+import { buildDocx, buildMarkdown, buildPdf } from '../projects/export/exportService.js';
 import { loadConfig } from '../store/configStore.js';
 import { errorMessage, errorStatus } from './errors.js';
 import { getCurrentAccountId } from '../billing/requestContext.js';
@@ -86,7 +86,13 @@ function normalizePlacement(input: unknown): SealPlacement | null {
 }
 
 function sendDownload(res: Response, buffer: Buffer, contentType: string, fileName: string): void {
-  const fallback = fileName.endsWith('.pdf') ? 'export.pdf' : fileName.endsWith('.docx') ? 'export.docx' : 'export';
+  const fallback = fileName.endsWith('.pdf')
+    ? 'export.pdf'
+    : fileName.endsWith('.docx')
+      ? 'export.docx'
+      : fileName.endsWith('.md')
+        ? 'export.md'
+        : 'export';
   res.setHeader('Content-Type', contentType);
   res.setHeader(
     'Content-Disposition',
@@ -457,6 +463,22 @@ projectsRouter.get('/:id/export/docx', async (req, res) => {
     );
   } catch (err) {
     res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '导出失败') });
+  }
+});
+
+// 导出 Markdown 工作稿
+projectsRouter.get('/:id/export/markdown', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const outline = getOutline(req.params.id);
+  if (!outline) return res.status(400).json({ message: '请先生成目录' });
+
+  try {
+    const buffer = Buffer.from(buildMarkdown(outline), 'utf-8');
+    const fileName = `${safeExportBaseName(project.name || '投标技术方案')}.md`;
+    sendDownload(res, buffer, 'text/markdown; charset=utf-8', fileName);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, 'Markdown 导出失败') });
   }
 });
 

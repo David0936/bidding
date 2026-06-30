@@ -227,7 +227,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [outlineDirty, setOutlineDirty] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
   const [savingOutline, setSavingOutline] = useState(false);
-  const [exporting, setExporting] = useState<'docx' | 'pdf' | 'stamped' | ''>('');
+  const [exporting, setExporting] = useState<'markdown' | 'docx' | 'pdf' | 'stamped' | ''>('');
 
   // 全局事实
   const [facts, setFacts] = useState<GlobalFacts | null>(null);
@@ -467,6 +467,20 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     try {
       await persistOutlineBeforeExport();
       await api.downloadDocx(current.id, current.name || '投标技术方案');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting('');
+    }
+  }
+
+  async function handleExportMarkdown() {
+    if (!current) return;
+    setExporting('markdown');
+    setError('');
+    try {
+      await persistOutlineBeforeExport();
+      await api.downloadMarkdown(current.id, current.name || '投标技术方案');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1191,6 +1205,14 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         ) : (
           <>
             <div className="export-grid">
+              <div className="export-option">
+                <strong>Markdown 工作稿</strong>
+                <span>保留目录和正文源码，适合版本比对、模板加工和二次编辑。</span>
+                <button className="btn btn-ghost" onClick={handleExportMarkdown} disabled={!!exporting}>
+                  <IconDownload />
+                  {exporting === 'markdown' ? '导出中…' : '导出 Markdown'}
+                </button>
+              </div>
               <div className="export-option">
                 <strong>可编辑稿</strong>
                 <span>保留标题层级，便于继续在 Word 里精修。</span>
