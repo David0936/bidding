@@ -102,6 +102,10 @@ async function throwIfNotOk(resp: Response): Promise<void> {
 async function downloadFromResponse(resp: Response, fallbackName: string): Promise<void> {
   await throwIfNotOk(resp);
   const blob = await resp.blob();
+  downloadBlob(blob, fallbackName);
+}
+
+function downloadBlob(blob: Blob, fallbackName: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -110,6 +114,10 @@ async function downloadFromResponse(resp: Response, fallbackName: string): Promi
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function downloadText(text: string, fileName: string, type = 'text/markdown;charset=utf-8'): void {
+  downloadBlob(new Blob([text], { type }), fileName);
 }
 
 function withAdminHeaders(headers?: HeadersInit): Headers {
@@ -265,6 +273,10 @@ export const api = {
   getTenderMarkdown(id: string): Promise<{ markdown: string }> {
     return jsonFetch<{ markdown: string }>(`/api/projects/${id}/tender-markdown`);
   },
+  async downloadTenderMarkdown(id: string, fallbackName: string): Promise<void> {
+    const { markdown } = await jsonFetch<{ markdown: string }>(`/api/projects/${id}/tender-markdown`);
+    downloadText(markdown, `${fallbackName}-招标文件.md`);
+  },
   getOriginalPlanText(id: string): Promise<{ text: string }> {
     return jsonFetch<{ markdown: string }>(`/api/projects/${id}/original-plan-markdown`).then((res) => ({
       text: res.markdown,
@@ -272,6 +284,10 @@ export const api = {
   },
   getOriginalPlanMarkdown(id: string): Promise<{ markdown: string }> {
     return jsonFetch<{ markdown: string }>(`/api/projects/${id}/original-plan-markdown`);
+  },
+  async downloadOriginalPlanMarkdown(id: string, fallbackName: string): Promise<void> {
+    const { markdown } = await jsonFetch<{ markdown: string }>(`/api/projects/${id}/original-plan-markdown`);
+    downloadText(markdown, `${fallbackName}-已有方案.md`);
   },
   async uploadTender(id: string, file: File): Promise<UploadResult> {
     const form = new FormData();

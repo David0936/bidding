@@ -611,6 +611,26 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     }
   }
 
+  async function handleDownloadTenderMarkdown() {
+    if (!current?.tender) return;
+    setError('');
+    try {
+      await api.downloadTenderMarkdown(current.id, current.name || '投标技术方案');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleDownloadOriginalPlanMarkdown() {
+    if (!current?.originalPlan) return;
+    setError('');
+    try {
+      await api.downloadOriginalPlanMarkdown(current.id, current.name || '投标技术方案');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function handleSealFile(file: File) {
     if (!current) {
       setError('请先创建或选择一个项目');
@@ -890,6 +910,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 <span className="muted">{current.tender.fileType.toUpperCase()}</span>
                 <span className="muted">·</span>
                 <span className="muted">{current.tender.charCount.toLocaleString()} 字</span>
+                <button type="button" className="mini-btn" onClick={handleDownloadTenderMarkdown}>
+                  <IconDownload />
+                  Markdown
+                </button>
               </div>
             )}
 
@@ -937,6 +961,14 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                   </strong>
                 )}
               </div>
+              {current.originalPlan && (
+                <div className="actions" style={{ marginTop: 12 }}>
+                  <button type="button" className="mini-btn" onClick={handleDownloadOriginalPlanMarkdown}>
+                    <IconDownload />
+                    下载已有方案 Markdown
+                  </button>
+                </div>
+              )}
             </div>
 
             {preview && (
