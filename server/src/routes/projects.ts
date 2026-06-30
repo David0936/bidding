@@ -42,7 +42,9 @@ import { buildDocx, buildMarkdown, buildPdf } from '../projects/export/exportSer
 import { loadConfig } from '../store/configStore.js';
 import { errorMessage, errorStatus } from './errors.js';
 import { getCurrentAccountId } from '../billing/requestContext.js';
+import { assertFeatureAccess, assertProjectCreationAllowed } from '../billing/billingStore.js';
 import { extractBearerToken, resolveToken } from '../auth/authStore.js';
+import type { BillingFeatureCode } from '../billing/types.js';
 import type { ElectronicSeal, Project, SealPlacement, TenderDoc } from '../projects/types.js';
 import type { Outline } from '../projects/outline/types.js';
 import type { GlobalFacts, TenderAnalysis } from '../projects/analysis/types.js';
@@ -63,6 +65,16 @@ function currentAccountId(req?: Request): string {
 
 function findOwnedProject(id: string, req?: Request): Project | null {
   return getProject(id, currentAccountId(req));
+}
+
+function requireFeature(req: Request, res: Response, feature: BillingFeatureCode): boolean {
+  try {
+    assertFeatureAccess(currentAccountId(req), feature);
+    return true;
+  } catch (err) {
+    res.status(errorStatus(err, 403)).json({ message: errorMessage(err, '当前套餐未开通该功能') });
+    return false;
+  }
 }
 
 function safeExportBaseName(name: string): string {
@@ -107,7 +119,13 @@ function sendDownload(res: Response, buffer: Buffer, contentType: string, fileNa
 
 // 创建项目
 projectsRouter.post('/', (req, res) => {
-  const project = createProject(req.body?.name, currentAccountId(req));
+  const accountId = currentAccountId(req);
+  try {
+    assertProjectCreationAllowed(accountId, listProjectsForAccount(accountId).length);
+  } catch (err) {
+    return res.status(errorStatus(err, 403)).json({ message: errorMessage(err, '当前套餐无法创建项目') });
+  }
+  const project = createProject(req.body?.name, accountId);
   res.json(project);
 });
 
@@ -486,6 +504,7 @@ projectsRouter.post('/:id/content/generate-section', async (req, res) => {
 
 // 导出 Word（.docx）
 projectsRouter.get('/:id/export/docx', async (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   const outline = getOutline(req.params.id);
@@ -508,6 +527,7 @@ projectsRouter.get('/:id/export/docx', async (req, res) => {
 
 // 导出 Markdown 工作稿
 projectsRouter.get('/:id/export/markdown', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   const outline = getOutline(req.params.id);
@@ -524,6 +544,7 @@ projectsRouter.get('/:id/export/markdown', (req, res) => {
 
 // 导出 PDF
 projectsRouter.get('/:id/export/pdf', async (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   const outline = getOutline(req.params.id);
@@ -540,6 +561,7 @@ projectsRouter.get('/:id/export/pdf', async (req, res) => {
 
 // 读取电子印章状态
 projectsRouter.get('/:id/seal', (req, res) => {
+  if (!requireFeature(req, res, 'seal')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   res.json({
@@ -550,6 +572,7 @@ projectsRouter.get('/:id/seal', (req, res) => {
 
 // 上传电子印章图片
 projectsRouter.post('/:id/seal', upload.single('file'), (req, res) => {
+  if (!requireFeature(req, res, 'seal')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   if (!req.file) return res.status(400).json({ message: '未收到印章图片' });
@@ -572,6 +595,7 @@ projectsRouter.post('/:id/seal', upload.single('file'), (req, res) => {
 
 // 读取电子印章图片
 projectsRouter.get('/:id/seal/image', (req, res) => {
+  if (!requireFeature(req, res, 'seal')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project?.seal) return res.status(404).json({ message: '尚未上传电子印章' });
   const buffer = getSealImage(req.params.id);
@@ -583,6 +607,7 @@ projectsRouter.get('/:id/seal/image', (req, res) => {
 
 // 删除电子印章
 projectsRouter.delete('/:id/seal', (req, res) => {
+  if (!requireFeature(req, res, 'seal')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   const updated = deleteSeal(req.params.id, currentAccountId(req));
@@ -592,6 +617,7 @@ projectsRouter.delete('/:id/seal', (req, res) => {
 
 // 保存电子印章位置
 projectsRouter.put('/:id/seal/placements', (req, res) => {
+  if (!requireFeature(req, res, 'seal')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   const incoming: unknown[] = Array.isArray(req.body?.placements) ? req.body.placements : [];
@@ -603,6 +629,7 @@ projectsRouter.put('/:id/seal/placements', (req, res) => {
 
 // 导出带电子章的 PDF
 projectsRouter.get('/:id/export/stamped-pdf', async (req, res) => {
+  if (!requireFeature(req, res, 'seal')) return;
   const project = findOwnedProject(req.params.id, req);
   if (!project) return res.status(404).json({ message: '项目不存在' });
   const outline = getOutline(req.params.id);

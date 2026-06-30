@@ -79,6 +79,15 @@ billingRouter.patch('/admin/accounts/:id', requireAdmin, (req, res) => {
       status: req.body?.status,
       adminNote: typeof req.body?.adminNote === 'string' ? req.body.adminNote : undefined,
       name: typeof req.body?.name === 'string' ? req.body.name : undefined,
+      planCode: req.body?.planCode,
+      planName: typeof req.body?.planName === 'string' ? req.body.planName : undefined,
+      planExpiresAt:
+        typeof req.body?.planExpiresAt === 'string' || req.body?.planExpiresAt === null
+          ? req.body.planExpiresAt
+          : undefined,
+      projectLimit: typeof req.body?.projectLimit === 'number' ? req.body.projectLimit : undefined,
+      featureFlags:
+        req.body?.featureFlags && typeof req.body.featureFlags === 'object' ? req.body.featureFlags : undefined,
     }),
   );
 });

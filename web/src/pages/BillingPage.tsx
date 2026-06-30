@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { BillingOverview, BillingTransaction, PaymentOrder } from '../types';
+import type { BillingFeatureCode, BillingOverview, BillingTransaction, PaymentOrder } from '../types';
 import { IconAlertTriangle, IconCheckCircle, IconPlus, IconWallet } from '../components/Icons';
 
-const FEATURE_LABELS: Record<string, string> = {
+const BILLING_FEATURE_LABELS: Record<BillingFeatureCode, string> = {
+  workspace: '标书工作台',
+  export: '导出 Word/PDF',
+  knowledge: '知识库',
+  duplicateCheck: '标书查重',
+  rejectionCheck: '废标项检查',
+  seal: '电子盖章',
+};
+const BILLING_FEATURE_CODES = Object.keys(BILLING_FEATURE_LABELS) as BillingFeatureCode[];
+
+const TRANSACTION_FEATURE_LABELS: Record<string, string> = {
   'project.tenderAnalysis': '招标关键项解析',
   'project.outline': '目录生成',
   'project.globalFacts': '全局事实生成',
@@ -29,6 +39,13 @@ function formatTime(value: string) {
   return date.toLocaleString('zh-CN', { hour12: false });
 }
 
+function formatDate(value?: string) {
+  if (!value) return '长期有效';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('zh-CN');
+}
+
 function orderStatusText(order: PaymentOrder) {
   if (order.status === 'pending') return '待支付';
   if (order.status === 'paid') return '已支付';
@@ -37,7 +54,7 @@ function orderStatusText(order: PaymentOrder) {
 }
 
 function transactionTitle(tx: BillingTransaction) {
-  if (tx.type === 'consume') return FEATURE_LABELS[tx.feature ?? ''] ?? tx.description;
+  if (tx.type === 'consume') return TRANSACTION_FEATURE_LABELS[tx.feature ?? ''] ?? tx.description;
   if (tx.type === 'trial') return '试用额度';
   if (tx.type === 'recharge') return '额度充值';
   if (tx.type === 'refund') return '额度退回';
@@ -152,6 +169,33 @@ export default function BillingPage() {
               <span>当前单价</span>
               <strong>{spendRate}</strong>
             </div>
+            <div className="metric-card">
+              <span>VIP 到期</span>
+              <strong>{formatDate(account.planExpiresAt)}</strong>
+            </div>
+            <div className="metric-card">
+              <span>项目上限</span>
+              <strong>{account.projectLimit === 0 ? '不限' : `${account.projectLimit} 个`}</strong>
+            </div>
+            <div className="metric-card">
+              <span>套餐状态</span>
+              <strong>{account.status === 'active' ? '可用' : '已暂停'}</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {account && (
+        <div className="card">
+          <h2>当前权益</h2>
+          <p className="hint">功能由管理员开通；AI 生成会额外消耗账户额度。</p>
+          <div className="feature-chip-grid">
+            {BILLING_FEATURE_CODES.map((code) => (
+              <span className={`badge ${account.featureFlags[code] ? 'badge-on' : 'badge-off'}`} key={code}>
+                {account.featureFlags[code] ? <IconCheckCircle /> : <IconAlertTriangle />}
+                {BILLING_FEATURE_LABELS[code]}
+              </span>
+            ))}
           </div>
         </div>
       )}

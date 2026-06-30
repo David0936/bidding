@@ -13,9 +13,67 @@ import type {
   PricingPolicy,
   TokenUsage,
   BillingAccountStatus,
+  BillingFeatureCode,
+  BillingFeatureFlags,
+  BillingPlanCode,
 } from './types.js';
 
 const BILLING_FILE = path.join(BILLING_DIR, 'ledger.json');
+const FEATURE_CODES: BillingFeatureCode[] = ['workspace', 'export', 'knowledge', 'duplicateCheck', 'rejectionCheck', 'seal'];
+
+const PLAN_PRESETS: Record<
+  BillingPlanCode,
+  { name: string; projectLimit: number; featureFlags: BillingFeatureFlags }
+> = {
+  trial: {
+    name: '试用版',
+    projectLimit: 2,
+    featureFlags: {
+      workspace: true,
+      export: false,
+      knowledge: false,
+      duplicateCheck: false,
+      rejectionCheck: false,
+      seal: false,
+    },
+  },
+  standard: {
+    name: '基础版',
+    projectLimit: 20,
+    featureFlags: {
+      workspace: true,
+      export: true,
+      knowledge: false,
+      duplicateCheck: false,
+      rejectionCheck: false,
+      seal: false,
+    },
+  },
+  vip: {
+    name: 'VIP 专业版',
+    projectLimit: 100,
+    featureFlags: {
+      workspace: true,
+      export: true,
+      knowledge: true,
+      duplicateCheck: true,
+      rejectionCheck: true,
+      seal: true,
+    },
+  },
+  enterprise: {
+    name: '企业版',
+    projectLimit: 1000,
+    featureFlags: {
+      workspace: true,
+      export: true,
+      knowledge: true,
+      duplicateCheck: true,
+      rejectionCheck: true,
+      seal: true,
+    },
+  },
+};
 
 export class BillingError extends Error {
   status: number;
@@ -56,6 +114,40 @@ function blankState(): BillingState {
   return { accounts: [], transactions: [], orders: [] };
 }
 
+function normalizePlanCode(value: unknown, fallback: BillingPlanCode): BillingPlanCode {
+  const code = String(value ?? '').trim();
+  return ['trial', 'standard', 'vip', 'enterprise'].includes(code) ? (code as BillingPlanCode) : fallback;
+}
+
+function normalizeFeatureFlags(value: unknown, fallback: BillingFeatureFlags): BillingFeatureFlags {
+  const incoming = value && typeof value === 'object' ? (value as Partial<Record<BillingFeatureCode, unknown>>) : {};
+  return FEATURE_CODES.reduce((acc, code) => {
+    acc[code] = typeof incoming[code] === 'boolean' ? incoming[code] : fallback[code];
+    return acc;
+  }, {} as BillingFeatureFlags);
+}
+
+function normalizeAccount(account: BillingAccount): BillingAccount {
+  const legacyPlan = account.planName === '按量充值' ? 'standard' : 'trial';
+  const planCode = normalizePlanCode(account.planCode, legacyPlan);
+  const preset = PLAN_PRESETS[planCode];
+  return {
+    ...account,
+    ownerEmail: account.ownerEmail ?? undefined,
+    ownerUserId: account.ownerUserId ?? undefined,
+    planCode,
+    planName: account.planName && account.planName !== '按量充值' ? account.planName : preset.name,
+    planExpiresAt: account.planExpiresAt ?? undefined,
+    projectLimit:
+      Number.isFinite(Number(account.projectLimit)) && Number(account.projectLimit) >= 0
+        ? Number(account.projectLimit)
+        : preset.projectLimit,
+    featureFlags: normalizeFeatureFlags(account.featureFlags, preset.featureFlags),
+    adminNote: account.adminNote ?? undefined,
+    status: account.status ?? 'active',
+  };
+}
+
 function readState(): BillingState {
   ensureDirs();
   if (!fs.existsSync(BILLING_FILE)) return blankState();
@@ -63,13 +155,7 @@ function readState(): BillingState {
     const parsed = JSON.parse(fs.readFileSync(BILLING_FILE, 'utf8')) as Partial<BillingState>;
     return {
       accounts: Array.isArray(parsed.accounts)
-        ? parsed.accounts.map((account) => ({
-            ...account,
-            ownerEmail: account.ownerEmail ?? undefined,
-            ownerUserId: account.ownerUserId ?? undefined,
-            adminNote: account.adminNote ?? undefined,
-            status: account.status ?? 'active',
-          }))
+        ? parsed.accounts.map((account) => normalizeAccount(account as BillingAccount))
         : [],
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
       orders: Array.isArray(parsed.orders) ? parsed.orders : [],
@@ -121,12 +207,17 @@ function createAccount(accountId: string, state: BillingState, input?: string | 
   const pricing = getPricingPolicy();
   const trialCredits = roundCredits(pricing.trialCredits);
   const identity = normalizeIdentity(input);
+  const preset = PLAN_PRESETS.trial;
   const account: BillingAccount = {
     id: accountId,
     ownerEmail: identity.ownerEmail?.trim().toLowerCase() || undefined,
     ownerUserId: identity.ownerUserId?.trim() || undefined,
     name: identity.name?.trim() || (accountId === DEFAULT_ACCOUNT_ID ? '默认客户账户' : accountId),
-    planName: '按量充值',
+    planCode: 'trial',
+    planName: preset.name,
+    planExpiresAt: undefined,
+    projectLimit: preset.projectLimit,
+    featureFlags: { ...preset.featureFlags },
     status: 'active',
     adminNote: undefined,
     balanceCredits: trialCredits,
@@ -232,6 +323,11 @@ export function updateAdminBillingAccount(
     status?: BillingAccountStatus;
     adminNote?: string;
     name?: string;
+    planCode?: BillingPlanCode;
+    planName?: string;
+    planExpiresAt?: string | null;
+    projectLimit?: number;
+    featureFlags?: Partial<BillingFeatureFlags>;
   },
 ): AdminBillingOverview {
   const state = readState();
@@ -249,9 +345,84 @@ export function updateAdminBillingAccount(
   if (typeof input.name === 'string' && input.name.trim()) {
     account.name = input.name.trim().slice(0, 80);
   }
+  if (input.planCode) {
+    const planCode = normalizePlanCode(input.planCode, account.planCode);
+    const preset = PLAN_PRESETS[planCode];
+    account.planCode = planCode;
+    account.planName = preset.name;
+    account.projectLimit = preset.projectLimit;
+    account.featureFlags = { ...preset.featureFlags };
+  }
+  if (typeof input.planName === 'string' && input.planName.trim()) {
+    account.planName = input.planName.trim().slice(0, 80);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'planExpiresAt')) {
+    const raw = input.planExpiresAt;
+    account.planExpiresAt = typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+  }
+  if (typeof input.projectLimit === 'number') {
+    if (!Number.isFinite(input.projectLimit) || input.projectLimit < 0) {
+      throw new BillingError('项目数上限必须大于等于 0。', 400);
+    }
+    account.projectLimit = Math.trunc(input.projectLimit);
+  }
+  if (input.featureFlags && typeof input.featureFlags === 'object') {
+    account.featureFlags = normalizeFeatureFlags(input.featureFlags, account.featureFlags);
+  }
   account.updatedAt = nowIso();
   writeState(state);
   return getAdminBillingOverview();
+}
+
+function isExpired(account: BillingAccount): boolean {
+  if (!account.planExpiresAt) return false;
+  const expiresAt = new Date(account.planExpiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt < Date.now();
+}
+
+function effectiveFeatureFlags(account: BillingAccount): BillingFeatureFlags {
+  if (!isExpired(account)) return account.featureFlags;
+  return { ...PLAN_PRESETS.trial.featureFlags };
+}
+
+function assertActiveAccount(account: BillingAccount): void {
+  if (account.status !== 'active') {
+    throw new BillingError('账户已暂停，请联系管理员恢复后再使用。', 403);
+  }
+}
+
+export function assertFeatureAccess(accountId: string, feature: BillingFeatureCode): void {
+  if (process.env.EASY_BIDDING_BILLING_ENABLED === 'false') return;
+  const state = readState();
+  const account = getOrCreateAccount(accountId, state);
+  writeState(state);
+  assertActiveAccount(account);
+  if (!effectiveFeatureFlags(account)[feature]) {
+    throw new BillingError('当前套餐未开通该功能，请联系管理员升级 VIP。', 403);
+  }
+}
+
+export function assertProjectCreationAllowed(accountId: string, existingProjectCount: number): void {
+  if (process.env.EASY_BIDDING_BILLING_ENABLED === 'false') return;
+  const state = readState();
+  const account = getOrCreateAccount(accountId, state);
+  writeState(state);
+  assertActiveAccount(account);
+  if (!effectiveFeatureFlags(account).workspace) {
+    throw new BillingError('当前套餐未开通标书工作台，请联系管理员处理。', 403);
+  }
+  if (account.projectLimit > 0 && existingProjectCount >= account.projectLimit) {
+    throw new BillingError(
+      `当前套餐最多可创建 ${account.projectLimit} 个项目，请联系管理员升级 VIP 或清理旧项目。`,
+      403,
+    );
+  }
+}
+
+function featureForAiUsage(feature?: string): BillingFeatureCode {
+  if (feature === 'knowledge.analyzeDocument') return 'knowledge';
+  if (feature === 'checks.rejection') return 'rejectionCheck';
+  return 'workspace';
 }
 
 interface RechargeInput {
@@ -428,8 +599,10 @@ export function ensureSufficientCredits(accountId: string, requiredCredits: numb
   const account = getOrCreateAccount(accountId, state);
   writeState(state);
 
-  if (account.status !== 'active') {
-    throw new BillingError('账户已暂停，请联系管理员恢复后再使用 AI 算力。');
+  assertActiveAccount(account);
+  const billingFeature = featureForAiUsage(feature);
+  if (!effectiveFeatureFlags(account)[billingFeature]) {
+    throw new BillingError('当前套餐未开通该功能，请联系管理员升级 VIP。', 403);
   }
   if (account.balanceCredits < required) {
     throw new BillingError(
@@ -451,6 +624,7 @@ export function recordConsumption(accountId: string, input: ConsumptionInput): B
 
   const state = readState();
   const account = getOrCreateAccount(accountId, state);
+  assertActiveAccount(account);
   if (account.balanceCredits < credits) {
     throw new BillingError(
       `额度不足：当前余额 ${account.balanceCredits.toFixed(2)}，本次实际消耗 ${credits.toFixed(2)}。请充值后重试。`,

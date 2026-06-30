@@ -88,6 +88,9 @@ export interface AdminMeResult {
 // ===== 额度 / 订阅计费 =====
 export type BillingTransactionType = 'trial' | 'recharge' | 'consume' | 'adjust' | 'refund';
 export type BillingAccountStatus = 'active' | 'suspended';
+export type BillingPlanCode = 'trial' | 'standard' | 'vip' | 'enterprise';
+export type BillingFeatureCode = 'workspace' | 'export' | 'knowledge' | 'duplicateCheck' | 'rejectionCheck' | 'seal';
+export type BillingFeatureFlags = Record<BillingFeatureCode, boolean>;
 export type PaymentOrderStatus = 'pending' | 'paid' | 'cancelled' | 'expired';
 export type PaymentProvider = 'manual' | 'mock' | 'wechat' | 'alipay' | 'stripe' | 'bank_transfer';
 
@@ -96,7 +99,11 @@ export interface BillingAccount {
   ownerUserId?: string;
   ownerEmail?: string;
   name: string;
+  planCode: BillingPlanCode;
   planName: string;
+  planExpiresAt?: string;
+  projectLimit: number;
+  featureFlags: BillingFeatureFlags;
   status: BillingAccountStatus;
   adminNote?: string;
   balanceCredits: number;

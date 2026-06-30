@@ -8,6 +8,8 @@ import type {
   AuthProfile,
   AuthResult,
   BillingAccountStatus,
+  BillingFeatureFlags,
+  BillingPlanCode,
   BillingOverview,
   ConsistencyAudit,
   DuplicateCheckResult,
@@ -248,7 +250,16 @@ export const api = {
   },
   adminUpdateAccount(
     accountId: string,
-    patch: { status?: BillingAccountStatus; adminNote?: string; name?: string },
+    patch: {
+      status?: BillingAccountStatus;
+      adminNote?: string;
+      name?: string;
+      planCode?: BillingPlanCode;
+      planName?: string;
+      planExpiresAt?: string | null;
+      projectLimit?: number;
+      featureFlags?: Partial<BillingFeatureFlags>;
+    },
   ): Promise<AdminBillingOverview> {
     return adminJsonFetch<AdminBillingOverview>(`/api/billing/admin/accounts/${accountId}`, {
       method: 'PATCH',

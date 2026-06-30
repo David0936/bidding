@@ -1,10 +1,82 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { AdminBillingOverview, BillingAccount, BillingAccountStatus } from '../types';
+import type {
+  AdminBillingOverview,
+  BillingAccount,
+  BillingAccountStatus,
+  BillingFeatureCode,
+  BillingFeatureFlags,
+  BillingPlanCode,
+} from '../types';
 import { IconAlertTriangle, IconCheckCircle, IconPlug, IconSave, IconSettings, IconWallet } from '../components/Icons';
 import SettingsPage from './SettingsPage';
 
 type AdminTab = 'billing' | 'models';
+
+const FEATURE_LABELS: Record<BillingFeatureCode, string> = {
+  workspace: '标书工作台',
+  export: '导出 Word/PDF',
+  knowledge: '知识库',
+  duplicateCheck: '标书查重',
+  rejectionCheck: '废标项检查',
+  seal: '电子盖章',
+};
+
+const FEATURE_CODES = Object.keys(FEATURE_LABELS) as BillingFeatureCode[];
+
+const PLAN_PRESETS: Record<
+  BillingPlanCode,
+  { name: string; projectLimit: number; featureFlags: BillingFeatureFlags }
+> = {
+  trial: {
+    name: '试用版',
+    projectLimit: 2,
+    featureFlags: {
+      workspace: true,
+      export: false,
+      knowledge: false,
+      duplicateCheck: false,
+      rejectionCheck: false,
+      seal: false,
+    },
+  },
+  standard: {
+    name: '基础版',
+    projectLimit: 20,
+    featureFlags: {
+      workspace: true,
+      export: true,
+      knowledge: false,
+      duplicateCheck: false,
+      rejectionCheck: false,
+      seal: false,
+    },
+  },
+  vip: {
+    name: 'VIP 专业版',
+    projectLimit: 100,
+    featureFlags: {
+      workspace: true,
+      export: true,
+      knowledge: true,
+      duplicateCheck: true,
+      rejectionCheck: true,
+      seal: true,
+    },
+  },
+  enterprise: {
+    name: '企业版',
+    projectLimit: 1000,
+    featureFlags: {
+      workspace: true,
+      export: true,
+      knowledge: true,
+      duplicateCheck: true,
+      rejectionCheck: true,
+      seal: true,
+    },
+  },
+};
 
 function formatCredits(value: number) {
   return `${value.toFixed(2)} 点`;
@@ -25,6 +97,21 @@ function accountStatusText(status: BillingAccountStatus) {
   return status === 'active' ? '正常' : '已暂停';
 }
 
+function planText(code: BillingPlanCode) {
+  return PLAN_PRESETS[code]?.name ?? code;
+}
+
+function toDateInputValue(value?: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
+function fromDateInputValue(value: string) {
+  return value ? new Date(`${value}T23:59:59.000+08:00`).toISOString() : null;
+}
+
 function accountSearchText(account: BillingAccount) {
   return [
     account.id,
@@ -33,6 +120,8 @@ function accountSearchText(account: BillingAccount) {
     account.ownerUserId,
     account.adminNote,
     account.status,
+    account.planName,
+    account.planCode,
   ]
     .filter(Boolean)
     .join(' ')
@@ -54,6 +143,10 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
   const [accountQuery, setAccountQuery] = useState('');
   const [accountNameDraft, setAccountNameDraft] = useState('');
   const [accountNoteDraft, setAccountNoteDraft] = useState('');
+  const [planCodeDraft, setPlanCodeDraft] = useState<BillingPlanCode>('trial');
+  const [planExpiresAtDraft, setPlanExpiresAtDraft] = useState('');
+  const [projectLimitDraft, setProjectLimitDraft] = useState(2);
+  const [featureFlagsDraft, setFeatureFlagsDraft] = useState<BillingFeatureFlags>(PLAN_PRESETS.trial.featureFlags);
   const [savingAccount, setSavingAccount] = useState(false);
   const [credits, setCredits] = useState(100);
   const [description, setDescription] = useState('线下公对公收款，管理员手工分配额度');
@@ -93,7 +186,19 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
   useEffect(() => {
     setAccountNameDraft(selectedAccount?.name ?? '');
     setAccountNoteDraft(selectedAccount?.adminNote ?? '');
-  }, [selectedAccount?.id, selectedAccount?.name, selectedAccount?.adminNote]);
+    setPlanCodeDraft(selectedAccount?.planCode ?? 'trial');
+    setPlanExpiresAtDraft(toDateInputValue(selectedAccount?.planExpiresAt));
+    setProjectLimitDraft(selectedAccount?.projectLimit ?? PLAN_PRESETS.trial.projectLimit);
+    setFeatureFlagsDraft(selectedAccount?.featureFlags ?? PLAN_PRESETS.trial.featureFlags);
+  }, [
+    selectedAccount?.id,
+    selectedAccount?.name,
+    selectedAccount?.adminNote,
+    selectedAccount?.planCode,
+    selectedAccount?.planExpiresAt,
+    selectedAccount?.projectLimit,
+    selectedAccount?.featureFlags,
+  ]);
 
   async function handleLogin() {
     setLoggingIn(true);
@@ -136,6 +241,10 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
       const next = await api.adminUpdateAccount(selectedAccount.id, {
         name: accountNameDraft,
         adminNote: accountNoteDraft,
+        planCode: planCodeDraft,
+        planExpiresAt: fromDateInputValue(planExpiresAtDraft),
+        projectLimit: projectLimitDraft,
+        featureFlags: featureFlagsDraft,
       });
       setOverview(next);
       setMessage({ ok: true, text: '客户资料已保存。' });
@@ -144,6 +253,17 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
     } finally {
       setSavingAccount(false);
     }
+  }
+
+  function handlePlanDraftChange(planCode: BillingPlanCode) {
+    const preset = PLAN_PRESETS[planCode];
+    setPlanCodeDraft(planCode);
+    setProjectLimitDraft(preset.projectLimit);
+    setFeatureFlagsDraft({ ...preset.featureFlags });
+  }
+
+  function patchFeatureFlag(code: BillingFeatureCode, enabled: boolean) {
+    setFeatureFlagsDraft((current) => ({ ...current, [code]: enabled }));
   }
 
   async function handleSetAccountStatus(status: BillingAccountStatus) {
@@ -332,6 +452,51 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
                     />
                   </div>
                 </div>
+                <div className="row">
+                  <div className="field">
+                    <label>会员套餐</label>
+                    <select value={planCodeDraft} onChange={(e) => handlePlanDraftChange(e.target.value as BillingPlanCode)}>
+                      {(Object.keys(PLAN_PRESETS) as BillingPlanCode[]).map((code) => (
+                        <option key={code} value={code}>
+                          {planText(code)}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="hint">切换套餐会套用默认功能权限。</p>
+                  </div>
+                  <div className="field">
+                    <label>VIP 到期日</label>
+                    <input
+                      type="date"
+                      value={planExpiresAtDraft}
+                      onChange={(e) => setPlanExpiresAtDraft(e.target.value)}
+                    />
+                    <p className="hint">留空表示不设置到期日。</p>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>项目数上限</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={projectLimitDraft}
+                    onChange={(e) => setProjectLimitDraft(Number(e.target.value))}
+                  />
+                  <p className="hint">0 表示不限制项目数量。</p>
+                </div>
+                <div className="feature-toggle-grid">
+                  {FEATURE_CODES.map((code) => (
+                    <label className="feature-toggle" key={code}>
+                      <input
+                        type="checkbox"
+                        checked={featureFlagsDraft[code]}
+                        onChange={(e) => patchFeatureFlag(code, e.target.checked)}
+                      />
+                      <span>{FEATURE_LABELS[code]}</span>
+                    </label>
+                  ))}
+                </div>
                 <div className="actions">
                   <button className="btn btn-primary" onClick={handleSaveAccount} disabled={savingAccount}>
                     <IconSave />
@@ -425,7 +590,9 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
                   <div className="ledger-row admin-account-row" key={account.id}>
                     <span>
                       <strong>{account.name}</strong>
-                      <em>{account.ownerEmail || account.id}</em>
+                      <em>
+                        {account.ownerEmail || account.id} / {account.planName}
+                      </em>
                     </span>
                     <span>
                       <span className={`badge ${account.status === 'active' ? 'badge-on' : 'badge-warn'}`}>

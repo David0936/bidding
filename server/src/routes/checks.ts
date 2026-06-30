@@ -4,6 +4,8 @@ import { jsonChat } from '../ai/jsonChat.js';
 import { parseDocument } from '../projects/docParser.js';
 import { loadConfig } from '../store/configStore.js';
 import { errorMessage, errorStatus } from './errors.js';
+import { getCurrentAccountId } from '../billing/requestContext.js';
+import { assertFeatureAccess } from '../billing/billingStore.js';
 
 export const checksRouter = Router();
 
@@ -110,6 +112,11 @@ checksRouter.post(
     { name: 'bids', maxCount: 10 },
   ]),
   async (req, res) => {
+    try {
+      assertFeatureAccess(getCurrentAccountId(), 'duplicateCheck');
+    } catch (err) {
+      return res.status(errorStatus(err, 403)).json({ message: errorMessage(err, '当前套餐未开通标书查重') });
+    }
     const files = req.files as Record<string, Express.Multer.File[]> | undefined;
     const tenderFile = files?.tender?.[0] ?? null;
     const bidFiles = files?.bids ?? [];
@@ -179,6 +186,11 @@ checksRouter.post(
     { name: 'bid', maxCount: 1 },
   ]),
   async (req, res) => {
+    try {
+      assertFeatureAccess(getCurrentAccountId(), 'rejectionCheck');
+    } catch (err) {
+      return res.status(errorStatus(err, 403)).json({ message: errorMessage(err, '当前套餐未开通废标项检查') });
+    }
     const files = req.files as Record<string, Express.Multer.File[]> | undefined;
     const tenderFile = files?.tender?.[0] ?? null;
     const bidFile = files?.bid?.[0] ?? null;

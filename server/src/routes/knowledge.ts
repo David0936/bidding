@@ -15,12 +15,22 @@ import { detectFileType, parseDocument } from '../projects/docParser.js';
 import { loadConfig } from '../store/configStore.js';
 import { errorMessage, errorStatus } from './errors.js';
 import { getCurrentAccountId } from '../billing/requestContext.js';
+import { assertFeatureAccess } from '../billing/billingStore.js';
 
 export const knowledgeRouter = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 30 * 1024 * 1024 },
+});
+
+knowledgeRouter.use((_req, res, next) => {
+  try {
+    assertFeatureAccess(getCurrentAccountId(), 'knowledge');
+    next();
+  } catch (err) {
+    res.status(errorStatus(err, 403)).json({ message: errorMessage(err, '当前套餐未开通知识库') });
+  }
 });
 
 knowledgeRouter.get('/', (_req, res) => {
