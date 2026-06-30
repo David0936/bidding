@@ -104,6 +104,9 @@ export interface BillingAccount {
   planExpiresAt?: string;
   projectLimit: number;
   featureFlags: BillingFeatureFlags;
+  planExpired: boolean;
+  daysUntilPlanExpires: number | null;
+  effectiveFeatureFlags: BillingFeatureFlags;
   status: BillingAccountStatus;
   adminNote?: string;
   balanceCredits: number;
@@ -178,6 +181,8 @@ export interface AdminBillingOverview {
     activeAccountCount: number;
     pendingOrderCount: number;
     paidOrderCount: number;
+    expiringSoonAccountCount: number;
+    expiredPlanAccountCount: number;
     totalRechargedCredits: number;
     totalConsumedCredits: number;
     paidAmountCents: number;

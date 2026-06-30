@@ -88,6 +88,13 @@ function formatTime(value: string) {
   return date.toLocaleString('zh-CN', { hour12: false });
 }
 
+function formatDate(value?: string) {
+  if (!value) return '长期有效';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('zh-CN');
+}
+
 function accountLabel(account: BillingAccount) {
   const owner = account.ownerEmail ? ` · ${account.ownerEmail}` : '';
   return `${account.name || account.id}${owner}（${account.id}）`;
@@ -99,6 +106,13 @@ function accountStatusText(status: BillingAccountStatus) {
 
 function planText(code: BillingPlanCode) {
   return PLAN_PRESETS[code]?.name ?? code;
+}
+
+function planExpiryText(account: BillingAccount) {
+  if (!account.planExpiresAt) return '长期有效';
+  if (account.planExpired) return `已过期 ${Math.abs(account.daysUntilPlanExpires ?? 0)} 天`;
+  if (account.daysUntilPlanExpires === 0) return '今天到期';
+  return `${formatDate(account.planExpiresAt)}，剩余 ${account.daysUntilPlanExpires} 天`;
 }
 
 function toDateInputValue(value?: string) {
@@ -122,6 +136,8 @@ function accountSearchText(account: BillingAccount) {
     account.status,
     account.planName,
     account.planCode,
+    account.planExpired ? '过期' : '',
+    account.daysUntilPlanExpires !== null && account.daysUntilPlanExpires <= 15 ? '临期' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -399,6 +415,14 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
               <span>累计消耗额度</span>
               <strong>{formatCredits(overview?.totals.totalConsumedCredits ?? 0)}</strong>
             </div>
+            <div className="metric-card">
+              <span>15 天内到期</span>
+              <strong>{overview?.totals.expiringSoonAccountCount ?? 0}</strong>
+            </div>
+            <div className="metric-card">
+              <span>套餐已过期</span>
+              <strong>{overview?.totals.expiredPlanAccountCount ?? 0}</strong>
+            </div>
           </div>
 
           <div className="card">
@@ -436,6 +460,10 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
                   <div className="desktop-meta-item">
                     <span>账户 ID</span>
                     <strong>{selectedAccount.id}</strong>
+                  </div>
+                  <div className="desktop-meta-item">
+                    <span>套餐到期</span>
+                    <strong>{planExpiryText(selectedAccount)}</strong>
                   </div>
                 </div>
                 <div className="row">
@@ -594,10 +622,16 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
                         {account.ownerEmail || account.id} / {account.planName}
                       </em>
                     </span>
-                    <span>
+                    <span className="account-status-stack">
                       <span className={`badge ${account.status === 'active' ? 'badge-on' : 'badge-warn'}`}>
                         {accountStatusText(account.status)}
                       </span>
+                      {account.planExpired && <span className="badge badge-warn">套餐过期</span>}
+                      {!account.planExpired &&
+                        account.daysUntilPlanExpires !== null &&
+                        account.daysUntilPlanExpires <= 15 && (
+                          <span className="badge badge-warn">临期 {account.daysUntilPlanExpires} 天</span>
+                        )}
                     </span>
                     <span>{formatCredits(account.balanceCredits)}</span>
                     <span>{formatTime(account.updatedAt)}</span>

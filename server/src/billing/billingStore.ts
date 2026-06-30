@@ -20,6 +20,7 @@ import type {
 
 const BILLING_FILE = path.join(BILLING_DIR, 'ledger.json');
 const FEATURE_CODES: BillingFeatureCode[] = ['workspace', 'export', 'knowledge', 'duplicateCheck', 'rejectionCheck', 'seal'];
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const PLAN_PRESETS: Record<
   BillingPlanCode,
@@ -127,22 +128,46 @@ function normalizeFeatureFlags(value: unknown, fallback: BillingFeatureFlags): B
   }, {} as BillingFeatureFlags);
 }
 
+function daysUntilPlanExpiresValue(value?: string): number | null {
+  if (!value) return null;
+  const expiresAt = new Date(value).getTime();
+  if (!Number.isFinite(expiresAt)) return null;
+  const diff = expiresAt - Date.now();
+  return diff >= 0 ? Math.ceil(diff / MS_PER_DAY) : Math.floor(diff / MS_PER_DAY);
+}
+
+function isPlanExpiredValue(value?: string): boolean {
+  if (!value) return false;
+  const expiresAt = new Date(value).getTime();
+  return Number.isFinite(expiresAt) && expiresAt < Date.now();
+}
+
+function effectiveFeatureFlagsValue(planExpiresAt: string | undefined, featureFlags: BillingFeatureFlags): BillingFeatureFlags {
+  if (!isPlanExpiredValue(planExpiresAt)) return { ...featureFlags };
+  return { ...PLAN_PRESETS.trial.featureFlags };
+}
+
 function normalizeAccount(account: BillingAccount): BillingAccount {
   const legacyPlan = account.planName === '按量充值' ? 'standard' : 'trial';
   const planCode = normalizePlanCode(account.planCode, legacyPlan);
   const preset = PLAN_PRESETS[planCode];
+  const planExpiresAt = account.planExpiresAt ?? undefined;
+  const featureFlags = normalizeFeatureFlags(account.featureFlags, preset.featureFlags);
   return {
     ...account,
     ownerEmail: account.ownerEmail ?? undefined,
     ownerUserId: account.ownerUserId ?? undefined,
     planCode,
     planName: account.planName && account.planName !== '按量充值' ? account.planName : preset.name,
-    planExpiresAt: account.planExpiresAt ?? undefined,
+    planExpiresAt,
     projectLimit:
       Number.isFinite(Number(account.projectLimit)) && Number(account.projectLimit) >= 0
         ? Number(account.projectLimit)
         : preset.projectLimit,
-    featureFlags: normalizeFeatureFlags(account.featureFlags, preset.featureFlags),
+    featureFlags,
+    planExpired: isPlanExpiredValue(planExpiresAt),
+    daysUntilPlanExpires: daysUntilPlanExpiresValue(planExpiresAt),
+    effectiveFeatureFlags: effectiveFeatureFlagsValue(planExpiresAt, featureFlags),
     adminNote: account.adminNote ?? undefined,
     status: account.status ?? 'active',
   };
@@ -208,6 +233,7 @@ function createAccount(accountId: string, state: BillingState, input?: string | 
   const trialCredits = roundCredits(pricing.trialCredits);
   const identity = normalizeIdentity(input);
   const preset = PLAN_PRESETS.trial;
+  const featureFlags = { ...preset.featureFlags };
   const account: BillingAccount = {
     id: accountId,
     ownerEmail: identity.ownerEmail?.trim().toLowerCase() || undefined,
@@ -217,7 +243,10 @@ function createAccount(accountId: string, state: BillingState, input?: string | 
     planName: preset.name,
     planExpiresAt: undefined,
     projectLimit: preset.projectLimit,
-    featureFlags: { ...preset.featureFlags },
+    featureFlags,
+    planExpired: false,
+    daysUntilPlanExpires: null,
+    effectiveFeatureFlags: { ...featureFlags },
     status: 'active',
     adminNote: undefined,
     balanceCredits: trialCredits,
@@ -296,6 +325,10 @@ export function getAdminBillingOverview(): AdminBillingOverview {
   expirePendingOrders(state);
   writeState(state);
   const paidOrders = state.orders.filter((order) => order.status === 'paid');
+  const expiringSoonAccounts = state.accounts.filter((account) => {
+    const days = account.daysUntilPlanExpires;
+    return days !== null && days >= 0 && days <= 15;
+  });
   return {
     accounts: [...state.accounts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     orders: [...state.orders].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
@@ -306,6 +339,8 @@ export function getAdminBillingOverview(): AdminBillingOverview {
       activeAccountCount: state.accounts.filter((account) => account.status === 'active').length,
       pendingOrderCount: state.orders.filter((order) => order.status === 'pending').length,
       paidOrderCount: paidOrders.length,
+      expiringSoonAccountCount: expiringSoonAccounts.length,
+      expiredPlanAccountCount: state.accounts.filter((account) => account.planExpired).length,
       totalRechargedCredits: roundCredits(
         state.accounts.reduce((sum, account) => sum + account.totalRechargedCredits, 0),
       ),
@@ -375,13 +410,11 @@ export function updateAdminBillingAccount(
 }
 
 function isExpired(account: BillingAccount): boolean {
-  if (!account.planExpiresAt) return false;
-  const expiresAt = new Date(account.planExpiresAt).getTime();
-  return Number.isFinite(expiresAt) && expiresAt < Date.now();
+  return account.planExpired;
 }
 
 function effectiveFeatureFlags(account: BillingAccount): BillingFeatureFlags {
-  if (!isExpired(account)) return account.featureFlags;
+  if (!isExpired(account)) return account.effectiveFeatureFlags;
   return { ...PLAN_PRESETS.trial.featureFlags };
 }
 

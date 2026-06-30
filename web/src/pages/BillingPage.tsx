@@ -46,6 +46,13 @@ function formatDate(value?: string) {
   return date.toLocaleDateString('zh-CN');
 }
 
+function planExpiryText(account: BillingOverview['account']) {
+  if (!account.planExpiresAt) return '长期有效';
+  if (account.planExpired) return `已过期 ${Math.abs(account.daysUntilPlanExpires ?? 0)} 天`;
+  if (account.daysUntilPlanExpires === 0) return '今天到期';
+  return `剩余 ${account.daysUntilPlanExpires} 天`;
+}
+
 function orderStatusText(order: PaymentOrder) {
   if (order.status === 'pending') return '待支付';
   if (order.status === 'paid') return '已支付';
@@ -179,9 +186,20 @@ export default function BillingPage() {
             </div>
             <div className="metric-card">
               <span>套餐状态</span>
-              <strong>{account.status === 'active' ? '可用' : '已暂停'}</strong>
+              <strong>{account.planExpired ? '已过期' : account.status === 'active' ? '可用' : '已暂停'}</strong>
             </div>
           </div>
+        </div>
+      )}
+
+      {account?.planExpiresAt && (
+        <div className={`result ${account.planExpired ? 'err' : (account.daysUntilPlanExpires ?? 99) <= 15 ? 'warn' : 'ok'}`}>
+          {account.planExpired ? <IconAlertTriangle /> : <IconCheckCircle />}
+          <span>
+            {account.planExpired
+              ? '套餐已到期，当前仅保留试用版权益。请联系管理员续费。'
+              : `套餐${planExpiryText(account)}，到期后高级功能会自动暂停。`}
+          </span>
         </div>
       )}
 
@@ -191,8 +209,8 @@ export default function BillingPage() {
           <p className="hint">功能由管理员开通；AI 生成会额外消耗账户额度。</p>
           <div className="feature-chip-grid">
             {BILLING_FEATURE_CODES.map((code) => (
-              <span className={`badge ${account.featureFlags[code] ? 'badge-on' : 'badge-off'}`} key={code}>
-                {account.featureFlags[code] ? <IconCheckCircle /> : <IconAlertTriangle />}
+              <span className={`badge ${account.effectiveFeatureFlags[code] ? 'badge-on' : 'badge-off'}`} key={code}>
+                {account.effectiveFeatureFlags[code] ? <IconCheckCircle /> : <IconAlertTriangle />}
                 {BILLING_FEATURE_LABELS[code]}
               </span>
             ))}

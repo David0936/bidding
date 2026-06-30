@@ -613,7 +613,7 @@ p {
 }
 
 .admin-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   max-width: 920px;
 }
 
@@ -638,6 +638,13 @@ p {
 
 .admin-account-row .badge {
   width: max-content;
+}
+
+.account-status-stack {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
 }
 
 .feature-toggle-grid {
@@ -894,6 +901,11 @@ p {
   background: var(--success-soft);
   color: var(--success);
   border-color: var(--success-border);
+}
+.result.warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-color: var(--warning-border);
 }
 .result.err {
   background: var(--danger-soft);

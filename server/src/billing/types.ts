@@ -17,6 +17,12 @@ export interface BillingAccount {
   planExpiresAt?: string;
   projectLimit: number;
   featureFlags: BillingFeatureFlags;
+  /** 当前是否已过套餐到期日 */
+  planExpired: boolean;
+  /** 距离套餐到期的天数；长期有效为 null，过期为负数 */
+  daysUntilPlanExpires: number | null;
+  /** 过期后会降级为试用版权益；接口校验以此为准 */
+  effectiveFeatureFlags: BillingFeatureFlags;
   status: BillingAccountStatus;
   adminNote?: string;
   balanceCredits: number;
@@ -91,6 +97,8 @@ export interface AdminBillingOverview {
     activeAccountCount: number;
     pendingOrderCount: number;
     paidOrderCount: number;
+    expiringSoonAccountCount: number;
+    expiredPlanAccountCount: number;
     totalRechargedCredits: number;
     totalConsumedCredits: number;
     paidAmountCents: number;
