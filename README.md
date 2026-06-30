@@ -79,7 +79,7 @@ npm install          # 安装前后端依赖（workspaces）
 npm run dev          # 同时启动后端(8787) 和前端(5174)
 ```
 
-打开浏览器访问 **http://127.0.0.1:5174**。客户可直接注册/登录；管理员从登录页「管理员后台」进入，使用 `EASY_BIDDING_ADMIN_SECRET` 登录后配置模型和客户额度。
+打开浏览器访问 **http://127.0.0.1:5174**。客户可直接注册/登录；管理员从登录页「管理员后台」进入，使用 `EASY_BIDDING_ADMIN_SECRET` 登录后配置模型和客户额度。开发脚本内置本地默认管理员密钥 `admin123456`，正式部署请务必设置自己的 `EASY_BIDDING_ADMIN_SECRET`。
 
 订阅/充值相关环境变量：
 
@@ -94,6 +94,7 @@ EASY_BIDDING_PAYMENT_CURRENCY=CNY           # 订单币种
 EASY_BIDDING_ALLOW_SELF_RECHARGE=false      # 演示环境可设 true；生产不要开放
 EASY_BIDDING_ALLOW_MOCK_PAYMENT=false       # 演示环境可设 true；允许前端确认订单支付
 EASY_BIDDING_ADMIN_SECRET=change-me         # 后台/支付回调人工入账密钥
+EASY_BIDDING_DEV_ADMIN_SECRET=admin123456   # 仅本地开发默认密钥；生产不要依赖它
 EASY_BIDDING_PAYMENT_WEBHOOK_SECRET=secret  # 通用支付回调 HMAC 密钥
 ```
 

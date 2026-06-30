@@ -4,7 +4,7 @@ import type { Request, RequestHandler } from 'express';
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
 function adminSecret(): string {
-  return process.env.EASY_BIDDING_ADMIN_SECRET || '';
+  return process.env.EASY_BIDDING_ADMIN_SECRET || process.env.EASY_BIDDING_DEV_ADMIN_SECRET || '';
 }
 
 function base64url(input: string): string {

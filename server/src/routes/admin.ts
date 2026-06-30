@@ -4,7 +4,7 @@ import { createAdminToken, isAdminRequest } from '../admin/adminAuth.js';
 export const adminRouter = Router();
 
 adminRouter.post('/login', (req, res) => {
-  const configured = process.env.EASY_BIDDING_ADMIN_SECRET || '';
+  const configured = process.env.EASY_BIDDING_ADMIN_SECRET || process.env.EASY_BIDDING_DEV_ADMIN_SECRET || '';
   if (!configured) {
     return res.status(500).json({ message: '未配置管理员密钥。' });
   }
