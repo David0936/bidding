@@ -20,6 +20,7 @@ import type {
   Project,
   RedactedAIConfig,
   RejectionCheckResult,
+  ResponseMatrix,
   SealPlacement,
   SealState,
   TenderAnalysis,
@@ -381,6 +382,16 @@ export const api = {
     return jsonFetch<GlobalFacts>(`/api/projects/${id}/global-facts`, {
       method: 'PUT',
       body: JSON.stringify(facts),
+    });
+  },
+
+  // ===== 点对点响应矩阵 =====
+  getResponseMatrix(id: string): Promise<ResponseMatrix> {
+    return jsonFetch<ResponseMatrix>(`/api/projects/${id}/response-matrix`);
+  },
+  generateResponseMatrix(id: string): Promise<ResponseMatrix> {
+    return jsonFetch<ResponseMatrix>(`/api/projects/${id}/response-matrix/generate`, {
+      method: 'POST',
     });
   },
 

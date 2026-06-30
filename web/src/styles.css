@@ -1651,6 +1651,7 @@ p {
 /* ============================ 关键项解析 + 全局事实 ============================ */
 .analysis-panel,
 .facts-editor,
+.response-matrix-panel,
 .audit-panel {
   display: flex;
   flex-direction: column;
@@ -1805,6 +1806,48 @@ p {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.response-matrix-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.response-matrix-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.response-matrix-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.response-matrix-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.response-matrix-item > strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  margin-bottom: var(--space-1);
+}
+
+.response-matrix-item p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 /* ============================ 标书查重 ============================ */
@@ -2149,7 +2192,8 @@ p {
   .admin-summary,
   .billing-metrics,
   .feature-toggle-grid,
-  .export-grid {
+  .export-grid,
+  .response-matrix-metrics {
     grid-template-columns: 1fr;
   }
 

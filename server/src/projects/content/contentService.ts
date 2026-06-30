@@ -3,6 +3,8 @@ import { chat } from '../../ai/provider.js';
 import type { AIConfig } from '../../ai/types.js';
 import type { GlobalFacts, TenderAnalysis } from '../analysis/types.js';
 import { renderAnalysisForPrompt, renderFactsForPrompt } from '../analysis/analysisService.js';
+import type { ResponseMatrix } from '../responseMatrix/types.js';
+import { renderResponseMatrixForPrompt } from '../responseMatrix/responseMatrixService.js';
 import type { KnowledgeItem } from '../../knowledge/types.js';
 import { renderKnowledgeDetails } from '../../knowledge/knowledgeService.js';
 import type { Outline } from '../outline/types.js';
@@ -36,6 +38,7 @@ export async function generateSectionContent(
   facts: GlobalFacts | null = null,
   knowledgeItems: KnowledgeItem[] = [],
   originalPlanText: string | null = null,
+  responseMatrix: ResponseMatrix | null = null,
 ): Promise<SectionContentResult> {
   const target = findNode(outline.nodes, nodeId);
   if (!target) {
@@ -73,6 +76,9 @@ export async function generateSectionContent(
     '【必须保持一致的全局事实】',
     renderFactsForPrompt(facts),
     '',
+    '【点对点响应矩阵】',
+    renderResponseMatrixForPrompt(responseMatrix),
+    '',
     '【可参考的企业知识库内容】',
     renderKnowledgeDetails(knowledgeItems),
     '',
@@ -84,6 +90,8 @@ export async function generateSectionContent(
     `章节标题：${target.node.title}`,
     '',
     '请直接输出该章节的正文 Markdown，篇幅约 400~800 字（视章节重要性可适当增减）。',
+    '如果响应矩阵中的 suggestedSection、requirement 或 responseStrategy 与当前章节相关，必须优先覆盖；尤其不能遗漏 critical/high、missing/risk/partial 状态的要求项。',
+    '正文要体现“逐条响应”的投标意识：对废标底线、评分点、交付服务、验收、质保、培训、报价边界、技术参数等要求给出明确承诺或实现方式。',
     '如果正文涉及上述全局事实，必须严格沿用事实内容，不得改写成相互冲突的周期、地点、金额、范围、服务承诺或主体名称。',
     '如果知识库内容与当前章节相关，可以吸收其方法、能力、案例和表述风格；不得引用与招标文件或全局事实冲突的内容。',
   ].join('\n');

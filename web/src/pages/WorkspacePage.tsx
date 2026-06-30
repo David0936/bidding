@@ -6,6 +6,8 @@ import type {
   GlobalFacts,
   Outline,
   Project,
+  ResponseMatrix,
+  ResponseMatrixItem,
   SealPlacement,
   SealState,
   TenderAnalysis,
@@ -28,6 +30,43 @@ import {
 } from '../components/Icons';
 
 const FACT_CATEGORIES = ['项目', '甲方', '交付', '服务', '资质', '金额', '评分', '风险', '其他'];
+
+const RESPONSE_CATEGORY_LABELS: Record<ResponseMatrixItem['category'], string> = {
+  qualification: '资格',
+  business: '商务',
+  technical: '技术',
+  scoring: '评分',
+  rejection: '废标',
+  delivery: '交付',
+  service: '服务',
+  price: '报价',
+  other: '其他',
+};
+
+const RESPONSE_OWNER_LABELS: Record<ResponseMatrixItem['ownerRole'], string> = {
+  business: '商务',
+  technical: '技术',
+  finance: '财务',
+  project_manager: '项目经理',
+  product: '产品',
+  legal: '法务',
+  admin: '综合',
+};
+
+const RESPONSE_STATUS_LABELS: Record<ResponseMatrixItem['status'], string> = {
+  covered: '已覆盖',
+  partial: '部分覆盖',
+  missing: '未覆盖',
+  risk: '有风险',
+  not_applicable: '不适用',
+};
+
+const RESPONSE_PRIORITY_LABELS: Record<ResponseMatrixItem['priority'], string> = {
+  critical: '关键',
+  high: '高',
+  medium: '中',
+  low: '低',
+};
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
@@ -206,6 +245,82 @@ function AuditPanel({ audit }: { audit: ConsistencyAudit }) {
   );
 }
 
+function responseStatusBadge(status: ResponseMatrixItem['status']) {
+  if (status === 'covered') return 'badge-on';
+  if (status === 'not_applicable') return 'badge-off';
+  return 'badge-warn';
+}
+
+function ResponseMatrixPanel({ matrix }: { matrix: ResponseMatrix }) {
+  const criticalCount = matrix.items.filter((item) => item.priority === 'critical').length;
+  const gapCount = matrix.items.filter((item) => ['missing', 'partial', 'risk'].includes(item.status)).length;
+  const coveredCount = matrix.items.filter((item) => item.status === 'covered').length;
+
+  return (
+    <div className="response-matrix-panel">
+      <div className="analysis-summary">
+        <strong>响应总览</strong>
+        <p>{matrix.summary}</p>
+      </div>
+      <div className="response-matrix-metrics">
+        <div className="metric-card">
+          <span>响应项</span>
+          <strong>{matrix.items.length}</strong>
+        </div>
+        <div className="metric-card">
+          <span>关键项</span>
+          <strong>{criticalCount}</strong>
+        </div>
+        <div className="metric-card">
+          <span>需补齐</span>
+          <strong>{gapCount}</strong>
+        </div>
+        <div className="metric-card">
+          <span>已覆盖</span>
+          <strong>{coveredCount}</strong>
+        </div>
+      </div>
+      <div className="response-matrix-list">
+        {matrix.items.map((item) => (
+          <div className="response-matrix-item" key={item.id}>
+            <div className="response-matrix-head">
+              <span className={`badge ${responseStatusBadge(item.status)}`}>{RESPONSE_STATUS_LABELS[item.status]}</span>
+              <span className={`badge ${item.priority === 'critical' ? 'badge-warn' : 'badge-off'}`}>
+                {RESPONSE_PRIORITY_LABELS[item.priority]}
+              </span>
+              <span className="badge badge-off">{RESPONSE_CATEGORY_LABELS[item.category]}</span>
+              <span className="badge badge-off">{RESPONSE_OWNER_LABELS[item.ownerRole]}</span>
+              {item.score && <span className="badge badge-off">{item.score}</span>}
+            </div>
+            <strong>{item.requirement}</strong>
+            {item.sourceClause && <span className="muted">依据：{item.sourceClause}</span>}
+            <p>{item.responseStrategy}</p>
+            {item.suggestedSection && (
+              <p>
+                <strong>落点：</strong>
+                {item.suggestedSection}
+              </p>
+            )}
+            {item.evidence && <pre className="audit-quote">{item.evidence}</pre>}
+            {item.gap && (
+              <p>
+                <strong>待补：</strong>
+                {item.gap}
+              </p>
+            )}
+            {item.risk && (
+              <p>
+                <strong>风险：</strong>
+                {item.risk}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => void }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
@@ -236,6 +351,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [factsDirty, setFactsDirty] = useState(false);
   const [factsLoading, setFactsLoading] = useState(false);
   const [savingFacts, setSavingFacts] = useState(false);
+
+  // 点对点响应矩阵
+  const [responseMatrix, setResponseMatrix] = useState<ResponseMatrix | null>(null);
+  const [matrixLoading, setMatrixLoading] = useState(false);
 
   // 全文一致性审计
   const [audit, setAudit] = useState<ConsistencyAudit | null>(null);
@@ -279,6 +398,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setOutlineDirty(false);
     setFacts(null);
     setFactsDirty(false);
+    setResponseMatrix(null);
     setAudit(null);
   }
 
@@ -327,6 +447,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setOutlineDirty(false);
     setFacts(null);
     setFactsDirty(false);
+    setResponseMatrix(null);
     setAudit(null);
     setSealState({ seal: null, placements: [] });
     replaceSealImageUrl('');
@@ -358,6 +479,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         .getGlobalFacts(current.id)
         .then((f) => setFacts(f))
         .catch(() => setFacts(null));
+      api
+        .getResponseMatrix(current.id)
+        .then((m) => setResponseMatrix(m))
+        .catch(() => setResponseMatrix(null));
       api
         .getConsistencyAudit(current.id)
         .then((a) => setAudit(a))
@@ -393,6 +518,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     try {
       const a = await api.generateAnalysis(current.id);
       setAnalysis(a);
+      setResponseMatrix(null);
+      setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -410,6 +537,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setOutlineDirty(false);
       setFacts(null);
       setFactsDirty(false);
+      setResponseMatrix(null);
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -425,6 +553,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const o = await api.saveOutline(current.id, outline);
       setOutline(o);
       setOutlineDirty(false);
+      setResponseMatrix(null);
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -441,6 +570,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const f = await api.generateGlobalFacts(current.id);
       setFacts(f);
       setFactsDirty(false);
+      setResponseMatrix(null);
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -457,6 +587,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const f = await api.saveGlobalFacts(current.id, facts);
       setFacts(f);
       setFactsDirty(false);
+      setResponseMatrix(null);
       setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -484,6 +615,30 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setAuditLoading(false);
+    }
+  }
+
+  async function handleGenerateResponseMatrix() {
+    if (!current) return;
+    setMatrixLoading(true);
+    setError('');
+    try {
+      if (outline && outlineDirty) {
+        const saved = await api.saveOutline(current.id, outline);
+        setOutline(saved);
+        setOutlineDirty(false);
+      }
+      if (facts && factsDirty) {
+        const savedFacts = await api.saveGlobalFacts(current.id, facts);
+        setFacts(savedFacts);
+        setFactsDirty(false);
+      }
+      const matrix = await api.generateResponseMatrix(current.id);
+      setResponseMatrix(matrix);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMatrixLoading(false);
     }
   }
 
@@ -842,15 +997,17 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const done2 = !!analysis;
   const done3 = !!outline;
   const done4 = !!facts && facts.items.length > 0;
-  const done5 = gen.total > 0 && gen.done >= gen.total;
-  const currentStep = !done1 ? 1 : !done2 ? 2 : !done3 ? 3 : !done4 ? 4 : !done5 ? 5 : 6;
+  const done5 = !!responseMatrix && responseMatrix.items.length > 0;
+  const done6 = gen.total > 0 && gen.done >= gen.total;
+  const currentStep = !done1 ? 1 : !done2 ? 2 : !done3 ? 3 : !done4 ? 4 : !done5 ? 5 : !done6 ? 6 : 7;
   const flowSteps = [
     { no: '01', name: '上传招标文件', done: done1 },
     { no: '02', name: '解析关键项', done: done2 },
     { no: '03', name: 'AI 生成目录', done: done3 },
     { no: '04', name: '全局事实', done: done4 },
-    { no: '05', name: 'AI 生成正文', done: done5 },
-    { no: '06', name: '导出/盖章', done: false },
+    { no: '05', name: '响应矩阵', done: done5 },
+    { no: '06', name: 'AI 生成正文', done: done6 },
+    { no: '07', name: '导出/盖章', done: false },
   ];
   const activePlacement = sealState.placements.find((placement) => placement.id === activePlacementId) ?? null;
   const visibleSealPlacements = sealState.placements.filter((placement) => placement.page === sealPage);
@@ -1247,6 +1404,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                   onChange={(o) => {
                     setOutline(o);
                     setOutlineDirty(true);
+                    setResponseMatrix(null);
                     setAudit(null);
                   }}
                 />
@@ -1313,6 +1471,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 onChange={(next) => {
                   setFacts(next);
                   setFactsDirty(true);
+                  setResponseMatrix(null);
                   setAudit(null);
                 }}
               />
@@ -1321,10 +1480,52 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 5 AI 生成正文 */}
+      {/* Step 5 点对点响应矩阵 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
           <div className={`step-no ${facts ? '' : 'muted-no'}`}>05</div>
+          <div>
+            <h2>点对点响应矩阵</h2>
+            <p className="hint" style={{ margin: 0 }}>
+              把评分点、废标项、商务材料、技术条款和服务承诺拆成团队任务，并检查正文是否逐项覆盖。
+            </p>
+          </div>
+        </div>
+
+        {!facts ? (
+          <div className="empty-tip">请先生成并确认全局事实。</div>
+        ) : (
+          <>
+            <div className="actions" style={{ marginBottom: responseMatrix ? 16 : 0 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleGenerateResponseMatrix}
+                disabled={matrixLoading}
+              >
+                <IconCheckCircle />
+                {matrixLoading ? '分析中…' : responseMatrix ? '刷新响应矩阵' : '生成响应矩阵'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={onGoSettings}>
+                <IconSettings />
+                AI 配置
+              </button>
+              {responseMatrix && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  共 {responseMatrix.items.length} 项 ·{' '}
+                  {responseMatrix.items.filter((item) => ['missing', 'partial', 'risk'].includes(item.status)).length} 项需补齐
+                </span>
+              )}
+            </div>
+
+            {responseMatrix && <ResponseMatrixPanel matrix={responseMatrix} />}
+          </>
+        )}
+      </div>
+
+      {/* Step 6 AI 生成正文 */}
+      <div className="card" style={{ maxWidth: 920 }}>
+        <div className="step-head">
+          <div className={`step-no ${responseMatrix ? '' : 'muted-no'}`}>06</div>
           <div>
             <h2>AI 生成正文</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -1337,6 +1538,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           <div className="empty-tip">请先生成目录。</div>
         ) : !facts ? (
           <div className="empty-tip">请先在上一步生成并确认全局事实。</div>
+        ) : !responseMatrix ? (
+          <div className="empty-tip">请先生成响应矩阵，让正文按评分点、废标项和商务/技术条款逐项覆盖。</div>
         ) : (
           <>
             <ContentEditor
@@ -1345,13 +1548,14 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
               onChange={(o) => {
                 setOutline(o);
                 setOutlineDirty(true);
+                setResponseMatrix(null);
                 setAudit(null);
               }}
               onSave={handleSaveOutline}
               saving={savingOutline}
               dirty={outlineDirty}
             />
-            {done5 && (
+            {done6 && (
               <div className="audit-box">
                 <div className="actions">
                   <button
@@ -1375,10 +1579,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 6 导出与电子盖章 */}
+      {/* Step 7 导出与电子盖章 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>06</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>07</div>
           <div>
             <h2>导出与电子盖章</h2>
             <p className="hint" style={{ margin: 0 }}>

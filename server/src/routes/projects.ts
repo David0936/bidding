@@ -22,6 +22,8 @@ import {
   getAnalysis,
   saveGlobalFacts,
   getGlobalFacts,
+  saveResponseMatrix,
+  getResponseMatrix,
   saveConsistencyAudit,
   getConsistencyAudit,
   saveSeal,
@@ -35,6 +37,7 @@ import { detectBidSections } from '../projects/bidSections.js';
 import { generateOutline } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
 import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysisService.js';
+import { generateResponseMatrix } from '../projects/responseMatrix/responseMatrixService.js';
 import { auditConsistency } from '../projects/audit/consistencyAuditService.js';
 import { listKnowledgeItems } from '../knowledge/knowledgeStore.js';
 import { setNodeContent } from '../projects/outline/treeUtils.js';
@@ -437,6 +440,39 @@ projectsRouter.put('/:id/global-facts', (req, res) => {
   res.json(facts);
 });
 
+// 读取点对点响应矩阵
+projectsRouter.get('/:id/response-matrix', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const matrix = getResponseMatrix(req.params.id);
+  if (!matrix) return res.status(404).json({ message: '尚未生成响应矩阵' });
+  res.json(matrix);
+});
+
+// AI 生成/刷新点对点响应矩阵
+projectsRouter.post('/:id/response-matrix/generate', async (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const tenderText = getTenderText(req.params.id);
+  if (!tenderText) return res.status(400).json({ message: '请先上传并解析招标文件' });
+
+  try {
+    const matrix = await generateResponseMatrix(
+      loadConfig(),
+      tenderText,
+      project.name,
+      getAnalysis(req.params.id),
+      getGlobalFacts(req.params.id),
+      getOutline(req.params.id),
+      getOriginalPlanText(req.params.id),
+    );
+    saveResponseMatrix(req.params.id, matrix);
+    res.json(matrix);
+  } catch (err) {
+    res.status(errorStatus(err)).json({ message: errorMessage(err, '响应矩阵生成失败') });
+  }
+});
+
 // 读取全文一致性审计结果
 projectsRouter.get('/:id/consistency-audit', (req, res) => {
   const project = findOwnedProject(req.params.id, req);
@@ -488,6 +524,7 @@ projectsRouter.post('/:id/content/generate-section', async (req, res) => {
       getGlobalFacts(req.params.id),
       listKnowledgeItems(currentAccountId(req)),
       getOriginalPlanText(req.params.id),
+      getResponseMatrix(req.params.id),
     );
     // 写回正文并落盘
     const updated: Outline = {
@@ -495,7 +532,7 @@ projectsRouter.post('/:id/content/generate-section', async (req, res) => {
       nodes: setNodeContent(outline.nodes, nodeId, result.content),
       updatedAt: new Date().toISOString(),
     };
-    saveOutline(req.params.id, updated);
+    saveOutline(req.params.id, updated, { clearResponseMatrix: false });
     res.json(result);
   } catch (err) {
     res.status(errorStatus(err)).json({ message: errorMessage(err, '正文生成失败') });

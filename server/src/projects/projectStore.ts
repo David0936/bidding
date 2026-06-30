@@ -4,6 +4,7 @@
 //   data/projects/<id>/tender.md     当前招标文件 Markdown 工作稿（可按标段聚焦）
 //   data/projects/<id>/original-plan.md 已有方案 Markdown 工作稿
 //   data/projects/<id>/original.<ext> 上传的原始文件
+//   data/projects/<id>/response-matrix.json 点对点响应矩阵
 //   data/projects/<id>/seal-image.bin 电子印章图片
 //   data/projects/<id>/seal-placements.json 电子印章坐标
 import fs from 'node:fs';
@@ -14,6 +15,7 @@ import type { BidSection, ElectronicSeal, Project, SealPlacement, TenderDoc } fr
 import type { Outline } from './outline/types.js';
 import type { GlobalFacts, TenderAnalysis } from './analysis/types.js';
 import type { ConsistencyAudit } from './audit/types.js';
+import type { ResponseMatrix } from './responseMatrix/types.js';
 
 const DEFAULT_PROJECT_ACCOUNT_ID = process.env.EASY_BIDDING_DEFAULT_ACCOUNT_ID || 'default-account';
 
@@ -46,6 +48,9 @@ function analysisFile(id: string): string {
 }
 function globalFactsFile(id: string): string {
   return path.join(projectDir(id), 'global-facts.json');
+}
+function responseMatrixFile(id: string): string {
+  return path.join(projectDir(id), 'response-matrix.json');
 }
 function consistencyAuditFile(id: string): string {
   return path.join(projectDir(id), 'consistency-audit.json');
@@ -192,7 +197,7 @@ export function deleteProject(id: string, accountId?: string): boolean {
 }
 
 function clearGeneratedFiles(id: string, options: { includeAnalysis?: boolean } = {}): void {
-  const files = [outlineFile(id), globalFactsFile(id), consistencyAuditFile(id)];
+  const files = [outlineFile(id), globalFactsFile(id), responseMatrixFile(id), consistencyAuditFile(id)];
   if (options.includeAnalysis) files.push(analysisFile(id));
   for (const file of files) {
     fs.rmSync(file, { force: true });
@@ -383,12 +388,19 @@ export function deleteOriginalPlan(id: string): Project | null {
 }
 
 /** 保存目录（同时更新项目 updatedAt） */
-export function saveOutline(id: string, outline: Outline): Outline | null {
+export function saveOutline(
+  id: string,
+  outline: Outline,
+  options: { clearResponseMatrix?: boolean } = {},
+): Outline | null {
   const current = readMeta(id);
   if (!current) return null;
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(outlineFile(id), JSON.stringify(outline, null, 2), 'utf-8');
+  if (options.clearResponseMatrix ?? true) {
+    fs.rmSync(responseMatrixFile(id), { force: true });
+  }
   fs.rmSync(consistencyAuditFile(id), { force: true });
   updateProject(id, {});
   return outline;
@@ -409,6 +421,8 @@ export function saveAnalysis(id: string, analysis: TenderAnalysis): TenderAnalys
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(analysisFile(id), JSON.stringify(analysis, null, 2), 'utf-8');
+  fs.rmSync(responseMatrixFile(id), { force: true });
+  fs.rmSync(consistencyAuditFile(id), { force: true });
   updateProject(id, {});
   return analysis;
 }
@@ -428,6 +442,7 @@ export function saveGlobalFacts(id: string, facts: GlobalFacts): GlobalFacts | n
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(globalFactsFile(id), JSON.stringify(facts, null, 2), 'utf-8');
+  fs.rmSync(responseMatrixFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   updateProject(id, {});
   return facts;
@@ -436,6 +451,24 @@ export function saveGlobalFacts(id: string, facts: GlobalFacts): GlobalFacts | n
 export function getGlobalFacts(id: string): GlobalFacts | null {
   try {
     return JSON.parse(fs.readFileSync(globalFactsFile(id), 'utf-8')) as GlobalFacts;
+  } catch {
+    return null;
+  }
+}
+
+export function saveResponseMatrix(id: string, matrix: ResponseMatrix): ResponseMatrix | null {
+  const current = readMeta(id);
+  if (!current) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  fs.writeFileSync(responseMatrixFile(id), JSON.stringify(matrix, null, 2), 'utf-8');
+  updateProject(id, {});
+  return matrix;
+}
+
+export function getResponseMatrix(id: string): ResponseMatrix | null {
+  try {
+    return JSON.parse(fs.readFileSync(responseMatrixFile(id), 'utf-8')) as ResponseMatrix;
   } catch {
     return null;
   }
