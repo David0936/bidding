@@ -177,6 +177,16 @@ const READINESS_CATEGORY_LABELS: Record<BidReadinessReport['issues'][number]['ca
   export: '导出',
 };
 
+type WorkbookExportKind =
+  | 'response-md'
+  | 'response-csv'
+  | 'deviation-md'
+  | 'deviation-csv'
+  | 'materials-md'
+  | 'materials-csv'
+  | 'readiness-md'
+  | 'readiness-csv';
+
 function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
 }
@@ -781,6 +791,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [genLoading, setGenLoading] = useState(false);
   const [savingOutline, setSavingOutline] = useState(false);
   const [exporting, setExporting] = useState<'markdown' | 'docx' | 'pdf' | 'stamped' | ''>('');
+  const [workbookExporting, setWorkbookExporting] = useState<WorkbookExportKind | ''>('');
 
   // 全局事实
   const [facts, setFacts] = useState<GlobalFacts | null>(null);
@@ -1276,6 +1287,22 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setOutline(saved);
     setOutlineDirty(false);
     invalidateReadiness();
+  }
+
+  async function handleWorkbookExport(
+    kind: WorkbookExportKind,
+    runner: (id: string, fallbackName: string) => Promise<void>,
+  ) {
+    if (!current) return;
+    setWorkbookExporting(kind);
+    setError('');
+    try {
+      await runner(current.id, current.name || '投标技术方案');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorkbookExporting('');
+    }
   }
 
   async function handleExportDocx() {
@@ -2233,10 +2260,28 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 AI 配置
               </button>
               {responseMatrix && (
-                <span className="muted" style={{ fontSize: 12 }}>
-                  共 {responseMatrix.items.length} 项 ·{' '}
-                  {responseMatrix.items.filter((item) => ['missing', 'partial', 'risk'].includes(item.status)).length} 项需补齐
-                </span>
+                <>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleWorkbookExport('response-md', api.downloadResponseMatrixMarkdown)}
+                    disabled={!!workbookExporting}
+                  >
+                    <IconDownload />
+                    {workbookExporting === 'response-md' ? '导出中…' : '矩阵 MD'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleWorkbookExport('response-csv', api.downloadResponseMatrixCsv)}
+                    disabled={!!workbookExporting}
+                  >
+                    <IconDownload />
+                    {workbookExporting === 'response-csv' ? '导出中…' : '矩阵 CSV'}
+                  </button>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    共 {responseMatrix.items.length} 项 ·{' '}
+                    {responseMatrix.items.filter((item) => ['missing', 'partial', 'risk'].includes(item.status)).length} 项需补齐
+                  </span>
+                </>
               )}
             </div>
 
@@ -2254,10 +2299,28 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                       {deviationLoading ? '生成中…' : deviationTable ? '刷新偏离表' : '生成偏离表'}
                     </button>
                     {deviationTable && (
-                      <span className="muted" style={{ fontSize: 12 }}>
-                        共 {deviationTable.items.length} 条 ·{' '}
-                        {deviationTable.items.filter((item) => item.deviationType === 'pending').length} 条待确认
-                      </span>
+                      <>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleWorkbookExport('deviation-md', api.downloadDeviationTableMarkdown)}
+                          disabled={!!workbookExporting}
+                        >
+                          <IconDownload />
+                          {workbookExporting === 'deviation-md' ? '导出中…' : '偏离表 MD'}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleWorkbookExport('deviation-csv', api.downloadDeviationTableCsv)}
+                          disabled={!!workbookExporting}
+                        >
+                          <IconDownload />
+                          {workbookExporting === 'deviation-csv' ? '导出中…' : '偏离表 CSV'}
+                        </button>
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          共 {deviationTable.items.length} 条 ·{' '}
+                          {deviationTable.items.filter((item) => item.deviationType === 'pending').length} 条待确认
+                        </span>
+                      </>
                     )}
                   </div>
                   {deviationTable && <DeviationTablePanel table={deviationTable} />}
@@ -2294,9 +2357,27 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 {materialLoading ? '梳理中…' : materialChecklist ? '刷新资料清单' : 'AI 梳理需补资料'}
               </button>
               {materialChecklist && (
-                <span className="muted" style={{ fontSize: 12 }}>
-                  必需资料 {uploadedRequiredMaterials.length}/{requiredMaterials.length} 已上传
-                </span>
+                <>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleWorkbookExport('materials-md', api.downloadMaterialChecklistMarkdown)}
+                    disabled={!!workbookExporting}
+                  >
+                    <IconDownload />
+                    {workbookExporting === 'materials-md' ? '导出中…' : '资料清单 MD'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleWorkbookExport('materials-csv', api.downloadMaterialChecklistCsv)}
+                    disabled={!!workbookExporting}
+                  >
+                    <IconDownload />
+                    {workbookExporting === 'materials-csv' ? '导出中…' : '资料清单 CSV'}
+                  </button>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    必需资料 {uploadedRequiredMaterials.length}/{requiredMaterials.length} 已上传
+                  </span>
+                </>
               )}
             </div>
 
@@ -2410,9 +2491,27 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 {readinessLoading ? '总检中…' : readiness ? '重新运行总检' : '运行提交前总检'}
               </button>
               {readiness && (
-                <span className="muted" style={{ fontSize: 12 }}>
-                  {READINESS_LEVEL_LABELS[readiness.level]} · {readiness.score} 分 · {readiness.issues.length} 项提示
-                </span>
+                <>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleWorkbookExport('readiness-md', api.downloadBidReadinessMarkdown)}
+                    disabled={!!workbookExporting}
+                  >
+                    <IconDownload />
+                    {workbookExporting === 'readiness-md' ? '导出中…' : '总检 MD'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleWorkbookExport('readiness-csv', api.downloadBidReadinessCsv)}
+                    disabled={!!workbookExporting}
+                  >
+                    <IconDownload />
+                    {workbookExporting === 'readiness-csv' ? '导出中…' : '总检 CSV'}
+                  </button>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {READINESS_LEVEL_LABELS[readiness.level]} · {readiness.score} 分 · {readiness.issues.length} 项提示
+                  </span>
+                </>
               )}
             </div>
             {readiness && <ReadinessPanel report={readiness} />}

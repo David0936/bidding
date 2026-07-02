@@ -57,6 +57,16 @@ import { buildBidReadinessReport } from '../projects/readiness/readinessService.
 import { listKnowledgeItems } from '../knowledge/knowledgeStore.js';
 import { findNode, setNodeContent } from '../projects/outline/treeUtils.js';
 import { buildDocx, buildMarkdown, buildPdf } from '../projects/export/exportService.js';
+import {
+  buildBidReadinessCsv,
+  buildBidReadinessMarkdown,
+  buildDeviationTableCsv,
+  buildDeviationTableMarkdown,
+  buildMaterialChecklistCsv,
+  buildMaterialChecklistMarkdown,
+  buildResponseMatrixCsv,
+  buildResponseMatrixMarkdown,
+} from '../projects/export/workbookExportService.js';
 import { loadConfig } from '../store/configStore.js';
 import { errorMessage, errorStatus } from './errors.js';
 import { getCurrentAccountId } from '../billing/requestContext.js';
@@ -126,13 +136,23 @@ function sendDownload(res: Response, buffer: Buffer, contentType: string, fileNa
       ? 'export.docx'
       : fileName.endsWith('.md')
         ? 'export.md'
-        : 'export';
+        : fileName.endsWith('.csv')
+          ? 'export.csv'
+          : 'export';
   res.setHeader('Content-Type', contentType);
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
   );
   res.send(buffer);
+}
+
+function sendMarkdownExport(res: Response, content: string, fileName: string): void {
+  sendDownload(res, Buffer.from(content, 'utf-8'), 'text/markdown; charset=utf-8', fileName);
+}
+
+function sendCsvExport(res: Response, content: string, fileName: string): void {
+  sendDownload(res, Buffer.from(`\ufeff${content}`, 'utf-8'), 'text/csv; charset=utf-8', fileName);
 }
 
 // 创建项目
@@ -757,6 +777,134 @@ projectsRouter.get('/:id/export/markdown', (req, res) => {
     sendDownload(res, buffer, 'text/markdown; charset=utf-8', fileName);
   } catch (err) {
     res.status(errorStatus(err, 500)).json({ message: errorMessage(err, 'Markdown 导出失败') });
+  }
+});
+
+// 导出响应矩阵 Markdown
+projectsRouter.get('/:id/export/workbench/response-matrix.md', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const matrix = getResponseMatrix(req.params.id);
+  if (!matrix) return res.status(400).json({ message: '请先生成响应矩阵' });
+
+  try {
+    const baseName = safeExportBaseName(project.name || '投标技术方案');
+    sendMarkdownExport(res, buildResponseMatrixMarkdown(matrix), `${baseName}-响应矩阵.md`);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '响应矩阵导出失败') });
+  }
+});
+
+// 导出响应矩阵 CSV
+projectsRouter.get('/:id/export/workbench/response-matrix.csv', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const matrix = getResponseMatrix(req.params.id);
+  if (!matrix) return res.status(400).json({ message: '请先生成响应矩阵' });
+
+  try {
+    const baseName = safeExportBaseName(project.name || '投标技术方案');
+    sendCsvExport(res, buildResponseMatrixCsv(matrix), `${baseName}-响应矩阵.csv`);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '响应矩阵 CSV 导出失败') });
+  }
+});
+
+// 导出商务/技术偏离表 Markdown
+projectsRouter.get('/:id/export/workbench/deviation-table.md', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const table = getDeviationTable(req.params.id);
+  if (!table) return res.status(400).json({ message: '请先生成商务/技术偏离表' });
+
+  try {
+    const baseName = safeExportBaseName(project.name || '投标技术方案');
+    sendMarkdownExport(res, buildDeviationTableMarkdown(table), `${baseName}-偏离表.md`);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '偏离表导出失败') });
+  }
+});
+
+// 导出商务/技术偏离表 CSV
+projectsRouter.get('/:id/export/workbench/deviation-table.csv', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const table = getDeviationTable(req.params.id);
+  if (!table) return res.status(400).json({ message: '请先生成商务/技术偏离表' });
+
+  try {
+    const baseName = safeExportBaseName(project.name || '投标技术方案');
+    sendCsvExport(res, buildDeviationTableCsv(table), `${baseName}-偏离表.csv`);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '偏离表 CSV 导出失败') });
+  }
+});
+
+// 导出客户资料补齐清单 Markdown
+projectsRouter.get('/:id/export/workbench/material-checklist.md', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const checklist = getMaterialChecklist(req.params.id);
+  if (!checklist) return res.status(400).json({ message: '请先生成资料补齐清单' });
+
+  try {
+    const baseName = safeExportBaseName(project.name || '投标技术方案');
+    sendMarkdownExport(res, buildMaterialChecklistMarkdown(checklist), `${baseName}-资料清单.md`);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '资料清单导出失败') });
+  }
+});
+
+// 导出客户资料补齐清单 CSV
+projectsRouter.get('/:id/export/workbench/material-checklist.csv', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const checklist = getMaterialChecklist(req.params.id);
+  if (!checklist) return res.status(400).json({ message: '请先生成资料补齐清单' });
+
+  try {
+    const baseName = safeExportBaseName(project.name || '投标技术方案');
+    sendCsvExport(res, buildMaterialChecklistCsv(checklist), `${baseName}-资料清单.csv`);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '资料清单 CSV 导出失败') });
+  }
+});
+
+// 导出提交前总检 Markdown
+projectsRouter.get('/:id/export/workbench/bid-readiness.md', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const report = getBidReadinessReport(req.params.id);
+  if (!report) return res.status(400).json({ message: '请先运行提交前总检' });
+
+  try {
+    const baseName = safeExportBaseName(project.name || '投标技术方案');
+    sendMarkdownExport(res, buildBidReadinessMarkdown(report), `${baseName}-提交前总检.md`);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '提交前总检导出失败') });
+  }
+});
+
+// 导出提交前总检 CSV
+projectsRouter.get('/:id/export/workbench/bid-readiness.csv', (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const report = getBidReadinessReport(req.params.id);
+  if (!report) return res.status(400).json({ message: '请先运行提交前总检' });
+
+  try {
+    const baseName = safeExportBaseName(project.name || '投标技术方案');
+    sendCsvExport(res, buildBidReadinessCsv(report), `${baseName}-提交前总检.csv`);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '提交前总检 CSV 导出失败') });
   }
 });
 

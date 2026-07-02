@@ -492,6 +492,38 @@ export const api = {
     const resp = await authFetch(`/api/projects/${id}/export/stamped-pdf`);
     await downloadFromResponse(resp, `${fallbackName}-盖章版.pdf`);
   },
+  async downloadResponseMatrixMarkdown(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/workbench/response-matrix.md`);
+    await downloadFromResponse(resp, `${fallbackName}-响应矩阵.md`);
+  },
+  async downloadResponseMatrixCsv(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/workbench/response-matrix.csv`);
+    await downloadFromResponse(resp, `${fallbackName}-响应矩阵.csv`);
+  },
+  async downloadDeviationTableMarkdown(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/workbench/deviation-table.md`);
+    await downloadFromResponse(resp, `${fallbackName}-偏离表.md`);
+  },
+  async downloadDeviationTableCsv(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/workbench/deviation-table.csv`);
+    await downloadFromResponse(resp, `${fallbackName}-偏离表.csv`);
+  },
+  async downloadMaterialChecklistMarkdown(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/workbench/material-checklist.md`);
+    await downloadFromResponse(resp, `${fallbackName}-资料清单.md`);
+  },
+  async downloadMaterialChecklistCsv(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/workbench/material-checklist.csv`);
+    await downloadFromResponse(resp, `${fallbackName}-资料清单.csv`);
+  },
+  async downloadBidReadinessMarkdown(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/workbench/bid-readiness.md`);
+    await downloadFromResponse(resp, `${fallbackName}-提交前总检.md`);
+  },
+  async downloadBidReadinessCsv(id: string, fallbackName: string): Promise<void> {
+    const resp = await authFetch(`/api/projects/${id}/export/workbench/bid-readiness.csv`);
+    await downloadFromResponse(resp, `${fallbackName}-提交前总检.csv`);
+  },
   getSealState(id: string): Promise<SealState> {
     return jsonFetch<SealState>(`/api/projects/${id}/seal`);
   },
