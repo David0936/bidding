@@ -187,6 +187,32 @@ type WorkbookExportKind =
   | 'readiness-md'
   | 'readiness-csv';
 
+type AutoIntakeStage = 'idle' | 'uploading' | 'analysis' | 'industry' | 'done' | 'error';
+
+const AUTO_INTAKE_STEPS: Array<{ stage: AutoIntakeStage; label: string }> = [
+  { stage: 'uploading', label: '上传解析' },
+  { stage: 'analysis', label: '需求明细' },
+  { stage: 'industry', label: '行业判断' },
+];
+
+const AUTO_INTAKE_STAGE_INDEX: Record<AutoIntakeStage, number> = {
+  idle: -1,
+  uploading: 0,
+  analysis: 1,
+  industry: 2,
+  done: AUTO_INTAKE_STEPS.length,
+  error: -1,
+};
+
+const AUTO_INTAKE_STAGE_LABELS: Record<AutoIntakeStage, string> = {
+  idle: '待上传',
+  uploading: '上传解析中',
+  analysis: '提取需求中',
+  industry: '识别行业中',
+  done: '自动解析完成',
+  error: '需手动处理',
+};
+
 function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
 }
@@ -766,6 +792,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [currentId, setCurrentId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [autoIntakeStage, setAutoIntakeStage] = useState<AutoIntakeStage>('idle');
+  const [autoIntakeMessage, setAutoIntakeMessage] = useState('');
   const [uploadingOriginalPlan, setUploadingOriginalPlan] = useState(false);
   const [sectionDraftId, setSectionDraftId] = useState('');
   const [sectionAction, setSectionAction] = useState<'detect' | 'select' | 'reset' | ''>('');
@@ -913,6 +941,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   useEffect(() => {
     setPreview('');
     setOriginalPlanPreview('');
+    setAutoIntakeStage('idle');
+    setAutoIntakeMessage('');
     setAnalysis(null);
     setIndustryProfile(null);
     setOutline(null);
@@ -1397,12 +1427,35 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     }
     setUploading(true);
     setError('');
+    setAutoIntakeStage('uploading');
+    setAutoIntakeMessage('正在上传并解析招标文件，完成后会自动提取需求明细。');
+    let uploaded = false;
     try {
       const res = await api.uploadTender(current.id, file);
+      uploaded = true;
+      mergeProject(res.project);
       setPreview(res.preview);
       clearTenderDependentState(true);
-      await refresh(current.id);
+
+      setAutoIntakeStage('analysis');
+      setAutoIntakeMessage('已完成文件解析，正在提取项目概况、评分要求和废标风险。');
+      const nextAnalysis = await api.generateAnalysis(res.project.id);
+      setAnalysis(nextAnalysis);
+
+      setAutoIntakeStage('industry');
+      setAutoIntakeMessage('需求明细已生成，正在判断行业、采购类型和响应重点。');
+      const nextProfile = await api.generateIndustryProfile(res.project.id);
+      setIndustryProfile(nextProfile);
+
+      setAutoIntakeStage('done');
+      setAutoIntakeMessage('自动解析完成。可以查看招标需求明细，或继续生成目录。');
     } catch (e) {
+      setAutoIntakeStage('error');
+      setAutoIntakeMessage(
+        uploaded
+          ? '文件已保留；自动解析未完成。请检查 AI 配置或在下方手动重试。'
+          : '上传或文件解析失败，请确认文件格式和大小后重试。',
+      );
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setUploading(false);
@@ -1706,6 +1759,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     : null;
   const hasBidSections = (current?.bidSections.length ?? 0) >= 2;
   const canApplySection = Boolean(sectionDraftId && sectionDraftId !== current?.selectedBidSectionId);
+  const showAutoIntake = autoIntakeStage !== 'idle';
+  const autoIntakeIndex = AUTO_INTAKE_STAGE_INDEX[autoIntakeStage];
+  const autoIntakeBadge =
+    autoIntakeStage === 'done' ? 'badge-on' : autoIntakeStage === 'error' ? 'badge-warn' : 'badge-off';
 
   return (
     <div>
@@ -1790,7 +1847,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           <div>
             <h2>上传招标文件</h2>
             <p className="hint" style={{ margin: 0 }}>
-              支持 PDF、Word(.docx)、txt / md。上传后自动解析为 Markdown 工作稿，作为后续生成的依据。
+              支持 PDF、Word(.docx)、txt / md。上传后自动解读标书，提取需求明细、评分点和行业判断。
             </p>
           </div>
         </div>
@@ -1823,12 +1880,43 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
               />
               <IconUploadCloud />
               {uploading ? (
-                <span>解析中…</span>
+                <span>{autoIntakeStage === 'uploading' ? '上传解析中…' : '自动解读中…'}</span>
               ) : (
                 <span>点击选择，或将文件拖拽到此处</span>
               )}
               <span className="dz-sub">支持 PDF / Word(.docx) / txt / md</span>
             </div>
+
+            {showAutoIntake && (
+              <div className={`auto-intake-card ${autoIntakeStage === 'error' ? 'is-error' : ''}`}>
+                <div className="auto-intake-head">
+                  <span className={`badge ${autoIntakeBadge}`}>{AUTO_INTAKE_STAGE_LABELS[autoIntakeStage]}</span>
+                  <span>{autoIntakeMessage}</span>
+                </div>
+                <div className="auto-intake-steps">
+                  {AUTO_INTAKE_STEPS.map((step, index) => {
+                    const state =
+                      autoIntakeStage === 'error'
+                        ? index < autoIntakeIndex
+                          ? 'done'
+                          : index === Math.max(autoIntakeIndex, 0)
+                            ? 'error'
+                            : 'pending'
+                        : index < autoIntakeIndex || autoIntakeStage === 'done'
+                          ? 'done'
+                          : index === autoIntakeIndex
+                            ? 'current'
+                            : 'pending';
+                    return (
+                      <span className="auto-intake-step" data-state={state} key={step.stage}>
+                        <span>{index + 1}</span>
+                        {step.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {current.tender && (
               <div className="tender-meta">
