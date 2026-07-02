@@ -2,6 +2,8 @@ import { jsonChat } from '../../ai/jsonChat.js';
 import type { AIConfig } from '../../ai/types.js';
 import { renderAnalysisForPrompt, renderFactsForPrompt } from '../analysis/analysisService.js';
 import type { GlobalFacts, TenderAnalysis } from '../analysis/types.js';
+import { renderIndustryProfileForPrompt } from '../industryProfile/industryProfileService.js';
+import type { TenderIndustryProfile } from '../industryProfile/types.js';
 import type { Outline } from '../outline/types.js';
 import { renderOutlineText } from '../outline/treeUtils.js';
 import { renderResponseMatrixForPrompt } from '../responseMatrix/responseMatrixService.js';
@@ -120,6 +122,7 @@ export async function generateMaterialChecklist(
   projectName: string,
   analysis: TenderAnalysis | null,
   facts: GlobalFacts | null,
+  industryProfile: TenderIndustryProfile | null,
   responseMatrix: ResponseMatrix | null,
   outline: Outline | null,
 ): Promise<ProjectMaterialChecklist> {
@@ -153,6 +156,9 @@ export async function generateMaterialChecklist(
           '【全局事实】',
           renderFactsForPrompt(facts),
           '',
+          '【行业/采购类型画像】',
+          renderIndustryProfileForPrompt(industryProfile),
+          '',
           '【响应矩阵】',
           renderResponseMatrixForPrompt(responseMatrix),
           '',
@@ -185,7 +191,8 @@ export async function generateMaterialChecklist(
           '2. 技术项目要列业务资料：现状资料、设备清单、系统接口、图纸、品牌型号、实施边界、验收标准等，便于正文写得真实。',
           '3. 每项 title 简短；description 和 uploadTips 要让客户知道该传什么。',
           '4. required=false 只用于加分或建议性材料。',
-          '5. 不要输出空泛的“上传相关资料”，必须具体到材料类型。',
+          '5. 结合行业/采购类型画像补充行业特有资料项，例如软件接口/账号/数据样例、电力安全资质/设备参数、工程图纸/人员证书等；但强制项必须能回到招标文件或响应矩阵依据。',
+          '6. 不要输出空泛的“上传相关资料”，必须具体到材料类型。',
         ].join('\n'),
       },
     ],

@@ -13,6 +13,7 @@ import type {
   SealPlacement,
   SealState,
   TenderAnalysis,
+  TenderIndustryProfile,
 } from '../types';
 import OutlineEditor from '../components/OutlineEditor';
 import ContentEditor from '../components/ContentEditor';
@@ -98,6 +99,43 @@ const MATERIAL_STATUS_LABELS: Record<ProjectMaterialItem['status'], string> = {
   uploaded: '已上传',
   needs_review: '待复核',
   not_required: '非必需',
+};
+
+const INDUSTRY_LABELS: Record<TenderIndustryProfile['industry'], string> = {
+  software_it: '软件信息化',
+  power_energy: '电力能源',
+  construction_infrastructure: '建筑基建',
+  municipal_transport: '市政交通',
+  water_conservancy: '水利水务',
+  security_weak_current: '安防弱电',
+  medical_education: '医疗教育',
+  environmental_sanitation: '环保环卫',
+  property_logistics: '物业物流',
+  industrial_manufacturing: '工业制造',
+  chemical_hazardous: '化工危化',
+  mining: '矿山资源',
+  government_consulting: '政务咨询',
+  general_procurement: '通用采购',
+  other: '其他行业',
+};
+
+const PROCUREMENT_TYPE_LABELS: Record<TenderIndustryProfile['procurementType'], string> = {
+  engineering: '工程类',
+  goods: '货物类',
+  service: '服务类',
+  software: '软件类',
+  equipment: '设备类',
+  epc: 'EPC/总承包',
+  operation: '运营维护类',
+  consulting: '咨询类',
+  mixed: '综合类',
+  other: '其他',
+};
+
+const CONFIDENCE_LABELS: Record<TenderIndustryProfile['confidence'], string> = {
+  high: '高置信',
+  medium: '中置信',
+  low: '低置信',
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -273,6 +311,62 @@ function AuditPanel({ audit }: { audit: ConsistencyAudit }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function industryConfidenceBadge(confidence: TenderIndustryProfile['confidence']) {
+  if (confidence === 'high') return 'badge-on';
+  if (confidence === 'low') return 'badge-warn';
+  return 'badge-off';
+}
+
+function IndustryProfilePanel({ profile }: { profile: TenderIndustryProfile }) {
+  const focusGroups = [
+    { title: '资料重点', items: profile.materialHints },
+    { title: '响应重点', items: profile.responseFocus },
+    { title: '风险重点', items: profile.riskFocus },
+    { title: '结构提示', items: profile.templateHints },
+  ].filter((group) => group.items.length > 0);
+
+  return (
+    <div className="industry-profile-panel">
+      <div className="analysis-summary">
+        <div className="industry-profile-head">
+          <strong>{profile.title}</strong>
+          <div className="industry-badges">
+            <span className="badge badge-on">{INDUSTRY_LABELS[profile.industry]}</span>
+            <span className="badge badge-off">{PROCUREMENT_TYPE_LABELS[profile.procurementType]}</span>
+            <span className={`badge ${industryConfidenceBadge(profile.confidence)}`}>
+              {CONFIDENCE_LABELS[profile.confidence]}
+            </span>
+          </div>
+        </div>
+        <p>{profile.reasoning}</p>
+      </div>
+
+      {profile.keywords.length > 0 && (
+        <div className="industry-keywords">
+          {profile.keywords.map((keyword) => (
+            <span className="badge badge-off" key={keyword}>
+              {keyword}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="industry-focus-grid">
+        {focusGroups.map((group) => (
+          <div className="industry-focus-card" key={group.title}>
+            <h3>{group.title}</h3>
+            <div className="focus-list">
+              {group.items.map((item, idx) => (
+                <span key={`${group.title}-${idx}`}>{item}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -475,6 +569,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [analysis, setAnalysis] = useState<TenderAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
 
+  // 招标书行业/采购类型画像
+  const [industryProfile, setIndustryProfile] = useState<TenderIndustryProfile | null>(null);
+  const [industryLoading, setIndustryLoading] = useState(false);
+
   // 目录相关
   const [outline, setOutline] = useState<Outline | null>(null);
   const [outlineDirty, setOutlineDirty] = useState(false);
@@ -535,7 +633,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   }
 
   function clearTenderDependentState(includeAnalysis: boolean) {
-    if (includeAnalysis) setAnalysis(null);
+    if (includeAnalysis) {
+      setAnalysis(null);
+      setIndustryProfile(null);
+    }
     setOutline(null);
     setOutlineDirty(false);
     setFacts(null);
@@ -586,6 +687,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setPreview('');
     setOriginalPlanPreview('');
     setAnalysis(null);
+    setIndustryProfile(null);
     setOutline(null);
     setOutlineDirty(false);
     setFacts(null);
@@ -607,6 +709,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         .getAnalysis(current.id)
         .then((a) => setAnalysis(a))
         .catch(() => setAnalysis(null));
+      api
+        .getIndustryProfile(current.id)
+        .then((profile) => setIndustryProfile(profile))
+        .catch(() => setIndustryProfile(null));
     }
     if (current?.originalPlan) {
       api
@@ -666,6 +772,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     try {
       const a = await api.generateAnalysis(current.id);
       setAnalysis(a);
+      setIndustryProfile(null);
       setResponseMatrix(null);
       setMaterialChecklist(null);
       setAudit(null);
@@ -673,6 +780,23 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setAnalysisLoading(false);
+    }
+  }
+
+  async function handleGenerateIndustryProfile() {
+    if (!current) return;
+    setIndustryLoading(true);
+    setError('');
+    try {
+      const profile = await api.generateIndustryProfile(current.id);
+      setIndustryProfile(profile);
+      setResponseMatrix(null);
+      setMaterialChecklist(null);
+      setAudit(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIndustryLoading(false);
     }
   }
 
@@ -1213,24 +1337,42 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const gen = outline ? countGenerated(outline) : { total: 0, done: 0 };
   const done1 = !!current?.tender;
   const done2 = !!analysis;
-  const done3 = !!outline;
-  const done4 = !!facts && facts.items.length > 0;
-  const done5 = !!responseMatrix && responseMatrix.items.length > 0;
+  const done3 = !!industryProfile;
+  const done4 = !!outline;
+  const done5 = !!facts && facts.items.length > 0;
+  const done6 = !!responseMatrix && responseMatrix.items.length > 0;
   const requiredMaterials = materialChecklist?.items.filter((item) => item.required) ?? [];
   const uploadedRequiredMaterials = requiredMaterials.filter((item) => item.files.length > 0 || item.status === 'uploaded');
   const hasMaterialChecklist = !!materialChecklist && materialChecklist.items.length > 0;
-  const done6 = hasMaterialChecklist && uploadedRequiredMaterials.length >= requiredMaterials.length;
-  const done7 = gen.total > 0 && gen.done >= gen.total;
-  const currentStep = !done1 ? 1 : !done2 ? 2 : !done3 ? 3 : !done4 ? 4 : !done5 ? 5 : !hasMaterialChecklist ? 6 : !done7 ? 7 : 8;
+  const done7 = hasMaterialChecklist && uploadedRequiredMaterials.length >= requiredMaterials.length;
+  const done8 = gen.total > 0 && gen.done >= gen.total;
+  const currentStep = !done1
+    ? 1
+    : !done2
+      ? 2
+      : !done3
+        ? 3
+        : !done4
+          ? 4
+          : !done5
+            ? 5
+            : !done6
+              ? 6
+              : !hasMaterialChecklist
+                ? 7
+                : !done8
+                  ? 8
+                  : 9;
   const flowSteps = [
     { no: '01', name: '上传招标文件', done: done1 },
     { no: '02', name: '解析关键项', done: done2 },
-    { no: '03', name: 'AI 生成目录', done: done3 },
-    { no: '04', name: '全局事实', done: done4 },
-    { no: '05', name: '响应矩阵', done: done5 },
-    { no: '06', name: '补充资料', done: done6 },
-    { no: '07', name: 'AI 生成正文', done: done7 },
-    { no: '08', name: '导出/盖章', done: false },
+    { no: '03', name: '行业识别', done: done3 },
+    { no: '04', name: 'AI 生成目录', done: done4 },
+    { no: '05', name: '全局事实', done: done5 },
+    { no: '06', name: '响应矩阵', done: done6 },
+    { no: '07', name: '补充资料', done: done7 },
+    { no: '08', name: 'AI 生成正文', done: done8 },
+    { no: '09', name: '导出/盖章', done: false },
   ];
   const activePlacement = sealState.placements.find((placement) => placement.id === activePlacementId) ?? null;
   const visibleSealPlacements = sealState.placements.filter((placement) => placement.page === sealPage);
@@ -1245,7 +1387,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     <div>
       <div className="page-header">
         <h1>标书工作台</h1>
-        <p>从招标文件到成稿，按“解析、目录、事实、正文、导出”的链路完成投标技术方案初稿。</p>
+        <p>从招标文件到成稿，按“解析、行业识别、矩阵、资料、正文、导出”的链路完成投标技术方案初稿。</p>
       </div>
 
       {/* 主链路总览 */}
@@ -1595,20 +1737,62 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 3 AI 生成目录 */}
+      {/* Step 3 招标书行业/采购类型识别 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
           <div className={`step-no ${analysis ? '' : 'muted-no'}`}>03</div>
           <div>
-            <h2>AI 生成目录</h2>
+            <h2>行业识别</h2>
             <p className="hint" style={{ margin: 0 }}>
-              根据招标文件生成结构化标书目录，可手动增删、改名后保存。
+              自动判断招标书行业、采购对象、资料重点、响应重点和常见风险，用于后续矩阵、资料清单和正文生成。
             </p>
           </div>
         </div>
 
         {!analysis ? (
           <div className="empty-tip">请先在上一步解析招标文件关键项。</div>
+        ) : (
+          <>
+            <div className="actions" style={{ marginBottom: industryProfile ? 16 : 0 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleGenerateIndustryProfile}
+                disabled={industryLoading}
+              >
+                <IconCheckCircle />
+                {industryLoading ? '识别中…' : industryProfile ? '重新识别行业' : 'AI 识别行业'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={onGoSettings}>
+                <IconSettings />
+                AI 配置
+              </button>
+              {industryProfile && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {INDUSTRY_LABELS[industryProfile.industry]} · {PROCUREMENT_TYPE_LABELS[industryProfile.procurementType]} ·{' '}
+                  {CONFIDENCE_LABELS[industryProfile.confidence]}
+                </span>
+              )}
+            </div>
+
+            {industryProfile && <IndustryProfilePanel profile={industryProfile} />}
+          </>
+        )}
+      </div>
+
+      {/* Step 4 AI 生成目录 */}
+      <div className="card" style={{ maxWidth: 920 }}>
+        <div className="step-head">
+          <div className={`step-no ${industryProfile ? '' : 'muted-no'}`}>04</div>
+          <div>
+            <h2>AI 生成目录</h2>
+            <p className="hint" style={{ margin: 0 }}>
+              根据招标文件和行业画像生成结构化标书目录，可手动增删、改名后保存。
+            </p>
+          </div>
+        </div>
+
+        {!industryProfile ? (
+          <div className="empty-tip">请先识别招标书行业和采购类型。</div>
         ) : (
           <>
             <div className="actions" style={{ marginBottom: outline ? 16 : 0 }}>
@@ -1658,10 +1842,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 4 全局事实 */}
+      {/* Step 5 全局事实 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>04</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>05</div>
           <div>
             <h2>全局事实</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -1716,10 +1900,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 5 点对点响应矩阵 */}
+      {/* Step 6 点对点响应矩阵 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${facts ? '' : 'muted-no'}`}>05</div>
+          <div className={`step-no ${facts ? '' : 'muted-no'}`}>06</div>
           <div>
             <h2>点对点响应矩阵</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -1728,7 +1912,9 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           </div>
         </div>
 
-        {!facts ? (
+        {!industryProfile ? (
+          <div className="empty-tip">请先识别招标书行业和采购类型。</div>
+        ) : !facts ? (
           <div className="empty-tip">请先生成并确认全局事实。</div>
         ) : (
           <>
@@ -1758,10 +1944,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 6 客户资料补齐 */}
+      {/* Step 7 客户资料补齐 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${responseMatrix ? '' : 'muted-no'}`}>06</div>
+          <div className={`step-no ${responseMatrix ? '' : 'muted-no'}`}>07</div>
           <div>
             <h2>补充资料</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -1803,10 +1989,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 7 AI 生成正文 */}
+      {/* Step 8 AI 生成正文 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${materialChecklist ? '' : 'muted-no'}`}>07</div>
+          <div className={`step-no ${materialChecklist ? '' : 'muted-no'}`}>08</div>
           <div>
             <h2>AI 生成正文</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -1817,6 +2003,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
 
         {!outline ? (
           <div className="empty-tip">请先生成目录。</div>
+        ) : !industryProfile ? (
+          <div className="empty-tip">请先识别招标书行业和采购类型。</div>
         ) : !facts ? (
           <div className="empty-tip">请先在上一步生成并确认全局事实。</div>
         ) : !responseMatrix ? (
@@ -1845,7 +2033,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
               saving={savingOutline}
               dirty={outlineDirty}
             />
-            {done7 && (
+            {done8 && (
               <div className="audit-box">
                 <div className="actions">
                   <button
@@ -1869,10 +2057,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 8 导出与电子盖章 */}
+      {/* Step 9 导出与电子盖章 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>08</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>09</div>
           <div>
             <h2>导出与电子盖章</h2>
             <p className="hint" style={{ margin: 0 }}>

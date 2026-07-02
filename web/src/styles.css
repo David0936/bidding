@@ -1651,6 +1651,7 @@ p {
 /* ============================ 关键项解析 + 全局事实 ============================ */
 .analysis-panel,
 .facts-editor,
+.industry-profile-panel,
 .response-matrix-panel,
 .material-panel,
 .audit-panel {
@@ -1689,6 +1690,66 @@ p {
   color: var(--text-soft);
   font-size: 13px;
   line-height: 1.7;
+}
+
+.industry-profile-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.industry-profile-head strong {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.industry-badges,
+.industry-keywords {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.industry-keywords {
+  gap: var(--space-2);
+}
+
+.industry-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.industry-focus-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+  min-width: 0;
+}
+
+.industry-focus-card h3 {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.focus-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.focus-list span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.65;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border-strong);
 }
 
 .info-grid {
@@ -2275,6 +2336,7 @@ p {
   .billing-metrics,
   .feature-toggle-grid,
   .export-grid,
+  .industry-focus-grid,
   .response-matrix-metrics {
     grid-template-columns: 1fr;
   }
@@ -2299,6 +2361,10 @@ p {
 
   .info-grid {
     grid-template-columns: 1fr;
+  }
+
+  .industry-profile-head {
+    flex-direction: column;
   }
 
   .project-bar {

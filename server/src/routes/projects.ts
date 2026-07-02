@@ -20,6 +20,8 @@ import {
   getOutline,
   saveAnalysis,
   getAnalysis,
+  saveIndustryProfile,
+  getIndustryProfile,
   saveGlobalFacts,
   getGlobalFacts,
   saveResponseMatrix,
@@ -42,6 +44,7 @@ import { detectBidSections } from '../projects/bidSections.js';
 import { generateOutline } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
 import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysisService.js';
+import { classifyTenderIndustry } from '../projects/industryProfile/industryProfileService.js';
 import { generateResponseMatrix } from '../projects/responseMatrix/responseMatrixService.js';
 import { generateMaterialChecklist } from '../projects/materialChecklist/materialChecklistService.js';
 import { auditConsistency } from '../projects/audit/consistencyAuditService.js';
@@ -288,6 +291,36 @@ projectsRouter.put('/:id/analysis', (req, res) => {
   res.json(analysis);
 });
 
+// 读取已保存的行业/采购类型画像
+projectsRouter.get('/:id/industry-profile', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const profile = getIndustryProfile(req.params.id);
+  if (!profile) return res.status(404).json({ message: '尚未识别招标书行业/采购类型' });
+  res.json(profile);
+});
+
+// AI 识别招标书行业/采购类型画像
+projectsRouter.post('/:id/industry-profile/generate', async (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const tenderText = getTenderText(req.params.id);
+  if (!tenderText) return res.status(400).json({ message: '请先上传并解析招标文件' });
+
+  try {
+    const profile = await classifyTenderIndustry(
+      loadConfig(),
+      tenderText,
+      project.name,
+      getAnalysis(req.params.id),
+    );
+    saveIndustryProfile(req.params.id, profile);
+    res.json(profile);
+  } catch (err) {
+    res.status(errorStatus(err)).json({ message: errorMessage(err, '行业/采购类型识别失败') });
+  }
+});
+
 // 上传并解析招标文件
 projectsRouter.post('/:id/tender', upload.single('file'), async (req, res) => {
   const project = findOwnedProject(req.params.id, req);
@@ -470,6 +503,7 @@ projectsRouter.post('/:id/response-matrix/generate', async (req, res) => {
       getAnalysis(req.params.id),
       getGlobalFacts(req.params.id),
       getOutline(req.params.id),
+      getIndustryProfile(req.params.id),
       getOriginalPlanText(req.params.id),
     );
     saveResponseMatrix(req.params.id, matrix);
@@ -502,6 +536,7 @@ projectsRouter.post('/:id/material-checklist/generate', async (req, res) => {
       project.name,
       getAnalysis(req.params.id),
       getGlobalFacts(req.params.id),
+      getIndustryProfile(req.params.id),
       getResponseMatrix(req.params.id),
       getOutline(req.params.id),
     );
@@ -607,6 +642,7 @@ projectsRouter.post('/:id/content/generate-section', async (req, res) => {
       getGlobalFacts(req.params.id),
       listKnowledgeItems(currentAccountId(req)),
       getOriginalPlanText(req.params.id),
+      getIndustryProfile(req.params.id),
       getResponseMatrix(req.params.id),
       renderProjectMaterialsForPrompt(req.params.id, target.path),
     );

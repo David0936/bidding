@@ -4,6 +4,7 @@
 //   data/projects/<id>/tender.md     当前招标文件 Markdown 工作稿（可按标段聚焦）
 //   data/projects/<id>/original-plan.md 已有方案 Markdown 工作稿
 //   data/projects/<id>/original.<ext> 上传的原始文件
+//   data/projects/<id>/industry-profile.json 招标书行业/采购类型画像
 //   data/projects/<id>/response-matrix.json 点对点响应矩阵
 //   data/projects/<id>/material-checklist.json 客户资料补齐清单
 //   data/projects/<id>/materials/<itemId>/ 上传资料原文与解析文本
@@ -17,6 +18,7 @@ import type { BidSection, ElectronicSeal, Project, SealPlacement, TenderDoc } fr
 import type { Outline } from './outline/types.js';
 import type { GlobalFacts, TenderAnalysis } from './analysis/types.js';
 import type { ConsistencyAudit } from './audit/types.js';
+import type { TenderIndustryProfile } from './industryProfile/types.js';
 import type { ResponseMatrix } from './responseMatrix/types.js';
 import type {
   ProjectMaterialChecklist,
@@ -55,6 +57,9 @@ function analysisFile(id: string): string {
 }
 function globalFactsFile(id: string): string {
   return path.join(projectDir(id), 'global-facts.json');
+}
+function industryProfileFile(id: string): string {
+  return path.join(projectDir(id), 'industry-profile.json');
 }
 function responseMatrixFile(id: string): string {
   return path.join(projectDir(id), 'response-matrix.json');
@@ -229,7 +234,13 @@ function clearGeneratedFiles(
   id: string,
   options: { includeAnalysis?: boolean; includeMaterials?: boolean } = {},
 ): void {
-  const files = [outlineFile(id), globalFactsFile(id), responseMatrixFile(id), consistencyAuditFile(id)];
+  const files = [
+    outlineFile(id),
+    globalFactsFile(id),
+    industryProfileFile(id),
+    responseMatrixFile(id),
+    consistencyAuditFile(id),
+  ];
   if (options.includeMaterials ?? true) files.push(materialChecklistFile(id));
   if (options.includeAnalysis) files.push(analysisFile(id));
   for (const file of files) {
@@ -436,6 +447,7 @@ export function saveOutline(
   fs.writeFileSync(outlineFile(id), JSON.stringify(outline, null, 2), 'utf-8');
   if (options.clearResponseMatrix ?? true) {
     fs.rmSync(responseMatrixFile(id), { force: true });
+    fs.rmSync(materialChecklistFile(id), { force: true });
   }
   fs.rmSync(consistencyAuditFile(id), { force: true });
   updateProject(id, {});
@@ -457,7 +469,9 @@ export function saveAnalysis(id: string, analysis: TenderAnalysis): TenderAnalys
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(analysisFile(id), JSON.stringify(analysis, null, 2), 'utf-8');
+  fs.rmSync(industryProfileFile(id), { force: true });
   fs.rmSync(responseMatrixFile(id), { force: true });
+  fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   updateProject(id, {});
   return analysis;
@@ -471,6 +485,27 @@ export function getAnalysis(id: string): TenderAnalysis | null {
   }
 }
 
+export function saveIndustryProfile(id: string, profile: TenderIndustryProfile): TenderIndustryProfile | null {
+  const current = readMeta(id);
+  if (!current) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  fs.writeFileSync(industryProfileFile(id), JSON.stringify(profile, null, 2), 'utf-8');
+  fs.rmSync(responseMatrixFile(id), { force: true });
+  fs.rmSync(materialChecklistFile(id), { force: true });
+  fs.rmSync(consistencyAuditFile(id), { force: true });
+  updateProject(id, {});
+  return profile;
+}
+
+export function getIndustryProfile(id: string): TenderIndustryProfile | null {
+  try {
+    return JSON.parse(fs.readFileSync(industryProfileFile(id), 'utf-8')) as TenderIndustryProfile;
+  } catch {
+    return null;
+  }
+}
+
 /** 保存全局事实变量 */
 export function saveGlobalFacts(id: string, facts: GlobalFacts): GlobalFacts | null {
   const current = readMeta(id);
@@ -479,6 +514,7 @@ export function saveGlobalFacts(id: string, facts: GlobalFacts): GlobalFacts | n
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(globalFactsFile(id), JSON.stringify(facts, null, 2), 'utf-8');
   fs.rmSync(responseMatrixFile(id), { force: true });
+  fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   updateProject(id, {});
   return facts;
@@ -498,6 +534,7 @@ export function saveResponseMatrix(id: string, matrix: ResponseMatrix): Response
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(responseMatrixFile(id), JSON.stringify(matrix, null, 2), 'utf-8');
+  fs.rmSync(materialChecklistFile(id), { force: true });
   updateProject(id, {});
   return matrix;
 }

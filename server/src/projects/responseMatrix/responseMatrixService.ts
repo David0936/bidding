@@ -2,6 +2,8 @@ import { jsonChat } from '../../ai/jsonChat.js';
 import type { AIConfig } from '../../ai/types.js';
 import { renderAnalysisForPrompt, renderFactsForPrompt } from '../analysis/analysisService.js';
 import type { GlobalFacts, TenderAnalysis } from '../analysis/types.js';
+import { renderIndustryProfileForPrompt } from '../industryProfile/industryProfileService.js';
+import type { TenderIndustryProfile } from '../industryProfile/types.js';
 import type { Outline } from '../outline/types.js';
 import { collectLeaves, renderOutlineText } from '../outline/treeUtils.js';
 import type {
@@ -131,6 +133,7 @@ export async function generateResponseMatrix(
   analysis: TenderAnalysis | null,
   facts: GlobalFacts | null,
   outline: Outline | null,
+  industryProfile: TenderIndustryProfile | null,
   originalPlanText: string | null = null,
 ): Promise<ResponseMatrix> {
   const clippedTender = tenderText.slice(0, MAX_TENDER_CHARS);
@@ -163,6 +166,9 @@ export async function generateResponseMatrix(
           '',
           '【全局事实】',
           renderFactsForPrompt(facts),
+          '',
+          '【行业/采购类型画像】',
+          renderIndustryProfileForPrompt(industryProfile),
           '',
           '【投标目录】',
           outline ? renderOutlineText(outline) : '（尚未生成目录）',
@@ -200,7 +206,8 @@ export async function generateResponseMatrix(
           '2. 每条 requirement 控制在 80 字以内；responseStrategy 要能直接指导投标人员补正文、补表格或补附件。',
           '3. 如果招标文件是经评审最低价，也要把实质性响应、报价不超限、明显不符合技术规范等作为高优先级项。',
           '4. 如果正文已经包含“完全响应/正偏离/点对点应答表”等证据，要在 evidence 中指出；否则指出 gap。',
-          '5. 不要编造原文没有的分值、证书或业绩；无法确认时 score 留空。',
+          '5. 结合行业/采购类型画像识别行业特有资料、技术承诺和风险，但不得覆盖招标文件原文要求。',
+          '6. 不要编造原文没有的分值、证书或业绩；无法确认时 score 留空。',
         ].join('\n'),
       },
     ],

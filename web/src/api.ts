@@ -25,6 +25,7 @@ import type {
   SealPlacement,
   SealState,
   TenderAnalysis,
+  TenderIndustryProfile,
   TestResult,
   UploadResult,
 } from './types';
@@ -353,6 +354,16 @@ export const api = {
     return jsonFetch<TenderAnalysis>(`/api/projects/${id}/analysis`, {
       method: 'PUT',
       body: JSON.stringify(analysis),
+    });
+  },
+
+  // ===== 招标书行业/采购类型画像 =====
+  getIndustryProfile(id: string): Promise<TenderIndustryProfile> {
+    return jsonFetch<TenderIndustryProfile>(`/api/projects/${id}/industry-profile`);
+  },
+  generateIndustryProfile(id: string): Promise<TenderIndustryProfile> {
+    return jsonFetch<TenderIndustryProfile>(`/api/projects/${id}/industry-profile/generate`, {
+      method: 'POST',
     });
   },
 
