@@ -8,6 +8,7 @@
 //   data/projects/<id>/response-matrix.json 点对点响应矩阵
 //   data/projects/<id>/material-checklist.json 客户资料补齐清单
 //   data/projects/<id>/materials/<itemId>/ 上传资料原文与解析文本
+//   data/projects/<id>/bid-readiness.json 提交前总检报告
 //   data/projects/<id>/seal-image.bin 电子印章图片
 //   data/projects/<id>/seal-placements.json 电子印章坐标
 import fs from 'node:fs';
@@ -20,6 +21,7 @@ import type { GlobalFacts, TenderAnalysis } from './analysis/types.js';
 import type { ConsistencyAudit } from './audit/types.js';
 import type { TenderIndustryProfile } from './industryProfile/types.js';
 import type { ResponseMatrix } from './responseMatrix/types.js';
+import type { BidReadinessReport } from './readiness/types.js';
 import type {
   ProjectMaterialChecklist,
   ProjectMaterialFile,
@@ -72,6 +74,9 @@ function materialsDir(id: string): string {
 }
 function consistencyAuditFile(id: string): string {
   return path.join(projectDir(id), 'consistency-audit.json');
+}
+function bidReadinessFile(id: string): string {
+  return path.join(projectDir(id), 'bid-readiness.json');
 }
 function sealImageFile(id: string): string {
   return path.join(projectDir(id), 'seal-image.bin');
@@ -240,6 +245,7 @@ function clearGeneratedFiles(
     industryProfileFile(id),
     responseMatrixFile(id),
     consistencyAuditFile(id),
+    bidReadinessFile(id),
   ];
   if (options.includeMaterials ?? true) files.push(materialChecklistFile(id));
   if (options.includeAnalysis) files.push(analysisFile(id));
@@ -450,6 +456,7 @@ export function saveOutline(
     fs.rmSync(materialChecklistFile(id), { force: true });
   }
   fs.rmSync(consistencyAuditFile(id), { force: true });
+  fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
   return outline;
 }
@@ -473,6 +480,7 @@ export function saveAnalysis(id: string, analysis: TenderAnalysis): TenderAnalys
   fs.rmSync(responseMatrixFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
+  fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
   return analysis;
 }
@@ -494,6 +502,7 @@ export function saveIndustryProfile(id: string, profile: TenderIndustryProfile):
   fs.rmSync(responseMatrixFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
+  fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
   return profile;
 }
@@ -516,6 +525,7 @@ export function saveGlobalFacts(id: string, facts: GlobalFacts): GlobalFacts | n
   fs.rmSync(responseMatrixFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
+  fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
   return facts;
 }
@@ -535,6 +545,7 @@ export function saveResponseMatrix(id: string, matrix: ResponseMatrix): Response
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(responseMatrixFile(id), JSON.stringify(matrix, null, 2), 'utf-8');
   fs.rmSync(materialChecklistFile(id), { force: true });
+  fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
   return matrix;
 }
@@ -591,6 +602,7 @@ export function saveMaterialChecklist(
   });
   fs.writeFileSync(materialChecklistFile(id), JSON.stringify(normalized, null, 2), 'utf-8');
   fs.rmSync(consistencyAuditFile(id), { force: true });
+  fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
   return normalized;
 }
@@ -645,6 +657,7 @@ export function saveMaterialFile(
     ),
   };
   fs.rmSync(consistencyAuditFile(projectId), { force: true });
+  fs.rmSync(bidReadinessFile(projectId), { force: true });
   return saveMaterialChecklist(projectId, updated);
 }
 
@@ -668,6 +681,7 @@ export function deleteMaterialFile(projectId: string, itemId: string, fileId: st
     };
   });
   fs.rmSync(consistencyAuditFile(projectId), { force: true });
+  fs.rmSync(bidReadinessFile(projectId), { force: true });
   return saveMaterialChecklist(projectId, {
     ...checklist,
     items: updatedItems,
@@ -731,6 +745,7 @@ export function saveConsistencyAudit(id: string, audit: ConsistencyAudit): Consi
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(consistencyAuditFile(id), JSON.stringify(audit, null, 2), 'utf-8');
+  fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
   return audit;
 }
@@ -738,6 +753,24 @@ export function saveConsistencyAudit(id: string, audit: ConsistencyAudit): Consi
 export function getConsistencyAudit(id: string): ConsistencyAudit | null {
   try {
     return JSON.parse(fs.readFileSync(consistencyAuditFile(id), 'utf-8')) as ConsistencyAudit;
+  } catch {
+    return null;
+  }
+}
+
+export function saveBidReadinessReport(id: string, report: BidReadinessReport): BidReadinessReport | null {
+  const current = readMeta(id);
+  if (!current) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  fs.writeFileSync(bidReadinessFile(id), JSON.stringify(report, null, 2), 'utf-8');
+  updateProject(id, {});
+  return report;
+}
+
+export function getBidReadinessReport(id: string): BidReadinessReport | null {
+  try {
+    return JSON.parse(fs.readFileSync(bidReadinessFile(id), 'utf-8')) as BidReadinessReport;
   } catch {
     return null;
   }
@@ -754,6 +787,7 @@ export function saveSeal(
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(sealImageFile(id), imageBuffer);
+  fs.rmSync(bidReadinessFile(id), { force: true });
   return updateProject(id, { seal }, accountId);
 }
 
@@ -770,6 +804,7 @@ export function deleteSeal(id: string, accountId?: string): Project | null {
   if (!current) return null;
   fs.rmSync(sealImageFile(id), { force: true });
   fs.rmSync(sealPlacementsFile(id), { force: true });
+  fs.rmSync(bidReadinessFile(id), { force: true });
   return updateProject(id, { seal: null }, accountId);
 }
 
@@ -783,6 +818,7 @@ export function saveSealPlacements(
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(sealPlacementsFile(id), JSON.stringify(placements, null, 2), 'utf-8');
+  fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {}, accountId);
   return placements;
 }

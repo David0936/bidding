@@ -7,6 +7,7 @@ import type {
   AuthMeResult,
   AuthProfile,
   AuthResult,
+  BidReadinessReport,
   BillingAccountStatus,
   BillingFeatureFlags,
   BillingPlanCode,
@@ -438,6 +439,16 @@ export const api = {
   },
   runConsistencyAudit(id: string): Promise<ConsistencyAudit> {
     return jsonFetch<ConsistencyAudit>(`/api/projects/${id}/consistency-audit/run`, {
+      method: 'POST',
+    });
+  },
+
+  // ===== 提交前总检 =====
+  getBidReadiness(id: string): Promise<BidReadinessReport> {
+    return jsonFetch<BidReadinessReport>(`/api/projects/${id}/bid-readiness`);
+  },
+  runBidReadiness(id: string): Promise<BidReadinessReport> {
+    return jsonFetch<BidReadinessReport>(`/api/projects/${id}/bid-readiness/run`, {
       method: 'POST',
     });
   },

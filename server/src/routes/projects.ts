@@ -33,6 +33,8 @@ import {
   renderProjectMaterialsForPrompt,
   saveConsistencyAudit,
   getConsistencyAudit,
+  saveBidReadinessReport,
+  getBidReadinessReport,
   saveSeal,
   getSealImage,
   deleteSeal,
@@ -48,6 +50,7 @@ import { classifyTenderIndustry } from '../projects/industryProfile/industryProf
 import { generateResponseMatrix } from '../projects/responseMatrix/responseMatrixService.js';
 import { generateMaterialChecklist } from '../projects/materialChecklist/materialChecklistService.js';
 import { auditConsistency } from '../projects/audit/consistencyAuditService.js';
+import { buildBidReadinessReport } from '../projects/readiness/readinessService.js';
 import { listKnowledgeItems } from '../knowledge/knowledgeStore.js';
 import { findNode, setNodeContent } from '../projects/outline/treeUtils.js';
 import { buildDocx, buildMarkdown, buildPdf } from '../projects/export/exportService.js';
@@ -616,6 +619,36 @@ projectsRouter.post('/:id/consistency-audit/run', async (req, res) => {
     res.json(audit);
   } catch (err) {
     res.status(errorStatus(err)).json({ message: errorMessage(err, '全文一致性审计失败') });
+  }
+});
+
+// 读取提交前总检报告
+projectsRouter.get('/:id/bid-readiness', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const report = getBidReadinessReport(req.params.id);
+  if (!report) return res.status(404).json({ message: '尚未运行提交前总检' });
+  res.json(report);
+});
+
+// 运行提交前总检：汇总响应矩阵、资料、正文、审计和盖章状态
+projectsRouter.post('/:id/bid-readiness/run', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+
+  try {
+    const report = buildBidReadinessReport({
+      outline: getOutline(req.params.id),
+      industryProfile: getIndustryProfile(req.params.id),
+      responseMatrix: getResponseMatrix(req.params.id),
+      materialChecklist: getMaterialChecklist(req.params.id),
+      audit: getConsistencyAudit(req.params.id),
+      sealPlacements: getSealPlacements(req.params.id),
+    });
+    saveBidReadinessReport(req.params.id, report);
+    res.json(report);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '提交前总检失败') });
   }
 });
 

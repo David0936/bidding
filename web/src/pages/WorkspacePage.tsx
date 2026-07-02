@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from '../api';
 import type {
+  BidReadinessReport,
   ConsistencyAudit,
   GlobalFacts,
   Outline,
@@ -136,6 +137,29 @@ const CONFIDENCE_LABELS: Record<TenderIndustryProfile['confidence'], string> = {
   high: '高置信',
   medium: '中置信',
   low: '低置信',
+};
+
+const READINESS_LEVEL_LABELS: Record<BidReadinessReport['level'], string> = {
+  ready: '可进入定稿',
+  attention: '需复核',
+  blocked: '暂不建议提交',
+};
+
+const READINESS_SEVERITY_LABELS: Record<BidReadinessReport['issues'][number]['severity'], string> = {
+  blocker: '阻断',
+  high: '高风险',
+  medium: '需注意',
+  low: '建议',
+};
+
+const READINESS_CATEGORY_LABELS: Record<BidReadinessReport['issues'][number]['category'], string> = {
+  workflow: '流程',
+  response: '响应',
+  materials: '资料',
+  content: '正文',
+  consistency: '一致性',
+  seal: '盖章',
+  export: '导出',
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -306,6 +330,93 @@ function AuditPanel({ audit }: { audit: ConsistencyAudit }) {
               <p>
                 <strong>建议：</strong>
                 {issue.suggestion}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function readinessLevelBadge(level: BidReadinessReport['level']) {
+  if (level === 'ready') return 'badge-on';
+  if (level === 'blocked') return 'badge-warn';
+  return 'badge-off';
+}
+
+function readinessSeverityBadge(severity: BidReadinessReport['issues'][number]['severity']) {
+  if (severity === 'blocker' || severity === 'high') return 'badge-warn';
+  return 'badge-off';
+}
+
+function ReadinessPanel({ report }: { report: BidReadinessReport }) {
+  const metrics = [
+    { label: '总分', value: `${report.metrics.score}` },
+    {
+      label: '响应缺口',
+      value: `${report.metrics.responseOpen}/${report.metrics.responseTotal}`,
+    },
+    {
+      label: '必需资料',
+      value: `${report.metrics.uploadedRequiredMaterials}/${report.metrics.requiredMaterials}`,
+    },
+    {
+      label: '正文完成',
+      value: `${report.metrics.generatedContentSections}/${report.metrics.contentSections}`,
+    },
+    {
+      label: '一致性问题',
+      value: `${report.metrics.highConsistencyIssues}/${report.metrics.consistencyIssues}`,
+    },
+    {
+      label: '盖章位置',
+      value: `${report.metrics.sealPlacements}`,
+    },
+  ];
+
+  return (
+    <div className="readiness-panel">
+      <div className="readiness-summary">
+        <div>
+          <span>提交前总检</span>
+          <strong>{report.score}</strong>
+        </div>
+        <div className="readiness-summary-body">
+          <span className={`badge ${readinessLevelBadge(report.level)}`}>
+            {READINESS_LEVEL_LABELS[report.level]}
+          </span>
+          <p>{report.summary}</p>
+        </div>
+      </div>
+
+      <div className="readiness-metrics">
+        {metrics.map((item) => (
+          <div className="metric-card" key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {report.issues.length === 0 ? (
+        <div className="empty-tip">未发现提交前阻断问题。</div>
+      ) : (
+        <div className="readiness-issue-list">
+          {report.issues.map((item) => (
+            <div className="readiness-issue" key={item.id}>
+              <div className="response-matrix-head">
+                <span className={`badge ${readinessSeverityBadge(item.severity)}`}>
+                  {READINESS_SEVERITY_LABELS[item.severity]}
+                </span>
+                <span className="badge badge-off">{READINESS_CATEGORY_LABELS[item.category]}</span>
+                {item.source && <span className="badge badge-off">{item.source}</span>}
+              </div>
+              <strong>{item.title}</strong>
+              <p>{item.detail}</p>
+              <p>
+                <strong>处理：</strong>
+                {item.action}
               </p>
             </div>
           ))}
@@ -600,6 +711,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [audit, setAudit] = useState<ConsistencyAudit | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
 
+  // 提交前总检
+  const [readiness, setReadiness] = useState<BidReadinessReport | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+
   // 电子盖章
   const sealFileRef = useRef<HTMLInputElement>(null);
   const sealPageRef = useRef<HTMLDivElement>(null);
@@ -632,6 +747,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setCurrentId(project.id);
   }
 
+  function invalidateReadiness() {
+    setReadiness(null);
+  }
+
   function clearTenderDependentState(includeAnalysis: boolean) {
     if (includeAnalysis) {
       setAnalysis(null);
@@ -644,6 +763,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setResponseMatrix(null);
     setMaterialChecklist(null);
     setAudit(null);
+    invalidateReadiness();
   }
 
   async function reloadTenderPreview(projectId: string) {
@@ -695,6 +815,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setResponseMatrix(null);
     setMaterialChecklist(null);
     setAudit(null);
+    setReadiness(null);
     setSealState({ seal: null, placements: [] });
     replaceSealImageUrl('');
     setSealPage(1);
@@ -741,6 +862,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         .getConsistencyAudit(current.id)
         .then((a) => setAudit(a))
         .catch(() => setAudit(null));
+      api
+        .getBidReadiness(current.id)
+        .then((report) => setReadiness(report))
+        .catch(() => setReadiness(null));
       setSealLoading(true);
       api
         .getSealState(current.id)
@@ -776,6 +901,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setResponseMatrix(null);
       setMaterialChecklist(null);
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -793,6 +919,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setResponseMatrix(null);
       setMaterialChecklist(null);
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -813,6 +940,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setResponseMatrix(null);
       setMaterialChecklist(null);
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -832,6 +960,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         setMaterialChecklist(null);
       }
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -850,6 +979,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setResponseMatrix(null);
       setMaterialChecklist(null);
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -868,6 +998,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setResponseMatrix(null);
       setMaterialChecklist(null);
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -890,10 +1021,35 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       }
       const result = await api.runConsistencyAudit(current.id);
       setAudit(result);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setAuditLoading(false);
+    }
+  }
+
+  async function handleRunReadiness() {
+    if (!current) return;
+    setReadinessLoading(true);
+    setError('');
+    try {
+      if (outline && outlineDirty) {
+        const saved = await api.saveOutline(current.id, outline, { clearResponseMatrix: false });
+        setOutline(saved);
+        setOutlineDirty(false);
+      }
+      if (facts && factsDirty) {
+        const savedFacts = await api.saveGlobalFacts(current.id, facts);
+        setFacts(savedFacts);
+        setFactsDirty(false);
+      }
+      const report = await api.runBidReadiness(current.id);
+      setReadiness(report);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReadinessLoading(false);
     }
   }
 
@@ -915,6 +1071,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const matrix = await api.generateResponseMatrix(current.id);
       setResponseMatrix(matrix);
       setMaterialChecklist(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -940,6 +1097,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const checklist = await api.generateMaterialChecklist(current.id);
       setMaterialChecklist(checklist);
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -960,6 +1118,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const checklist = await api.uploadMaterialFile(current.id, materialTargetItemId, file);
       setMaterialChecklist(checklist);
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -977,6 +1136,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const checklist = await api.deleteMaterialFile(current.id, itemId, fileId);
       setMaterialChecklist(checklist);
       setAudit(null);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -989,6 +1149,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     const saved = await api.saveOutline(current.id, outline, { clearResponseMatrix: false });
     setOutline(saved);
     setOutlineDirty(false);
+    invalidateReadiness();
   }
 
   async function handleExportDocx() {
@@ -1208,6 +1369,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const state = await api.uploadSeal(current.id, file);
       setSealState(state);
       replaceSealImageUrl(URL.createObjectURL(file));
+      invalidateReadiness();
       await refresh(current.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1224,6 +1386,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     try {
       const state = await api.saveSealPlacements(current.id, sealState.placements);
       setSealState(state);
+      invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1241,6 +1404,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setSealState(state);
       replaceSealImageUrl('');
       setActivePlacementId('');
+      invalidateReadiness();
       await refresh(current.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1250,6 +1414,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   }
 
   function updatePlacement(id: string, patch: Partial<SealPlacement>) {
+    invalidateReadiness();
     setSealState((state) => ({
       ...state,
       placements: state.placements.map((placement) =>
@@ -1276,6 +1441,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     };
     setSealState((state) => ({ ...state, placements: [...state.placements, placement] }));
     setActivePlacementId(placement.id);
+    invalidateReadiness();
   }
 
   function handlePlacementPointerDown(e: ReactPointerEvent<HTMLButtonElement>, placement: SealPlacement) {
@@ -1323,6 +1489,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       placements: state.placements.filter((placement) => placement.id !== activePlacementId),
     }));
     setActivePlacementId('');
+    invalidateReadiness();
   }
 
   if (loading) {
@@ -1346,6 +1513,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const hasMaterialChecklist = !!materialChecklist && materialChecklist.items.length > 0;
   const done7 = hasMaterialChecklist && uploadedRequiredMaterials.length >= requiredMaterials.length;
   const done8 = gen.total > 0 && gen.done >= gen.total;
+  const done9 = !!readiness && readiness.level !== 'blocked';
   const currentStep = !done1
     ? 1
     : !done2
@@ -1362,7 +1530,9 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 ? 7
                 : !done8
                   ? 8
-                  : 9;
+                  : !done9
+                    ? 9
+                    : 10;
   const flowSteps = [
     { no: '01', name: '上传招标文件', done: done1 },
     { no: '02', name: '解析关键项', done: done2 },
@@ -1372,7 +1542,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     { no: '06', name: '响应矩阵', done: done6 },
     { no: '07', name: '补充资料', done: done7 },
     { no: '08', name: 'AI 生成正文', done: done8 },
-    { no: '09', name: '导出/盖章', done: false },
+    { no: '09', name: '提交前总检', done: done9 },
+    { no: '10', name: '导出/盖章', done: false },
   ];
   const activePlacement = sealState.placements.find((placement) => placement.id === activePlacementId) ?? null;
   const visibleSealPlacements = sealState.placements.filter((placement) => placement.page === sealPage);
@@ -1387,7 +1558,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     <div>
       <div className="page-header">
         <h1>标书工作台</h1>
-        <p>从招标文件到成稿，按“解析、行业识别、矩阵、资料、正文、导出”的链路完成投标技术方案初稿。</p>
+        <p>从招标文件到成稿，按“解析、行业识别、矩阵、资料、正文、总检、导出”的链路完成投标技术方案初稿。</p>
       </div>
 
       {/* 主链路总览 */}
@@ -1825,6 +1996,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                     setResponseMatrix(null);
                     setMaterialChecklist(null);
                     setAudit(null);
+                    invalidateReadiness();
                   }}
                 />
                 <div className="actions" style={{ marginTop: 16 }}>
@@ -1893,6 +2065,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                   setResponseMatrix(null);
                   setMaterialChecklist(null);
                   setAudit(null);
+                  invalidateReadiness();
                 }}
               />
             )}
@@ -2028,6 +2201,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 setOutline(o);
                 setOutlineDirty(true);
                 setAudit(null);
+                invalidateReadiness();
               }}
               onSave={() => handleSaveOutline(false)}
               saving={savingOutline}
@@ -2057,10 +2231,48 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         )}
       </div>
 
-      {/* Step 9 导出与电子盖章 */}
+      {/* Step 9 提交前总检 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>09</div>
+          <div className={`step-no ${done8 ? '' : 'muted-no'}`}>09</div>
+          <div>
+            <h2>提交前总检</h2>
+            <p className="hint" style={{ margin: 0 }}>
+              汇总响应矩阵、必需资料、正文完成度、一致性审计和盖章状态，判断当前标书是否适合进入定稿。
+            </p>
+          </div>
+        </div>
+
+        {!outline ? (
+          <div className="empty-tip">请先生成目录。</div>
+        ) : !responseMatrix ? (
+          <div className="empty-tip">请先生成响应矩阵。</div>
+        ) : !materialChecklist ? (
+          <div className="empty-tip">请先梳理资料清单。</div>
+        ) : !done8 ? (
+          <div className="empty-tip">请先完成正文生成或手动补齐空白章节。</div>
+        ) : (
+          <>
+            <div className="actions" style={{ marginBottom: readiness ? 16 : 0 }}>
+              <button className="btn btn-primary" onClick={handleRunReadiness} disabled={readinessLoading}>
+                <IconCheckCircle />
+                {readinessLoading ? '总检中…' : readiness ? '重新运行总检' : '运行提交前总检'}
+              </button>
+              {readiness && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {READINESS_LEVEL_LABELS[readiness.level]} · {readiness.score} 分 · {readiness.issues.length} 项提示
+                </span>
+              )}
+            </div>
+            {readiness && <ReadinessPanel report={readiness} />}
+          </>
+        )}
+      </div>
+
+      {/* Step 10 导出与电子盖章 */}
+      <div className="card" style={{ maxWidth: 920 }}>
+        <div className="step-head">
+          <div className={`step-no ${outline ? '' : 'muted-no'}`}>10</div>
           <div>
             <h2>导出与电子盖章</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2073,6 +2285,18 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           <div className="empty-tip">请先生成目录与正文。</div>
         ) : (
           <>
+            {!readiness && (
+              <div className="result warn" style={{ marginTop: 0 }}>
+                <IconAlertTriangle />
+                <span>建议先运行提交前总检，再导出定稿。</span>
+              </div>
+            )}
+            {readiness?.level === 'blocked' && (
+              <div className="result warn" style={{ marginTop: 0 }}>
+                <IconAlertTriangle />
+                <span>当前总检为“暂不建议提交”，仍可导出工作稿，但建议先处理阻断问题。</span>
+              </div>
+            )}
             <div className="export-grid">
               <div className="export-option">
                 <strong>Markdown 工作稿</strong>
