@@ -4,6 +4,8 @@ import { api } from '../api';
 import type {
   BidReadinessReport,
   ConsistencyAudit,
+  DeviationTable,
+  DeviationTableItem,
   GlobalFacts,
   Outline,
   Project,
@@ -70,6 +72,19 @@ const RESPONSE_PRIORITY_LABELS: Record<ResponseMatrixItem['priority'], string> =
   high: '高',
   medium: '中',
   low: '低',
+};
+
+const DEVIATION_SCOPE_LABELS: Record<DeviationTableItem['scope'], string> = {
+  business: '商务',
+  technical: '技术',
+};
+
+const DEVIATION_TYPE_LABELS: Record<DeviationTableItem['deviationType'], string> = {
+  no_deviation: '无偏离',
+  positive: '正偏离',
+  negative: '负偏离',
+  pending: '待确认',
+  not_applicable: '不适用',
 };
 
 const MATERIAL_CATEGORY_LABELS: Record<ProjectMaterialItem['category'], string> = {
@@ -488,6 +503,82 @@ function responseStatusBadge(status: ResponseMatrixItem['status']) {
   return 'badge-warn';
 }
 
+function deviationTypeBadge(type: DeviationTableItem['deviationType']) {
+  if (type === 'no_deviation' || type === 'positive') return 'badge-on';
+  if (type === 'pending' || type === 'negative') return 'badge-warn';
+  return 'badge-off';
+}
+
+function DeviationTablePanel({ table }: { table: DeviationTable }) {
+  const pendingCount = table.items.filter((item) => item.deviationType === 'pending').length;
+  const noDeviationCount = table.items.filter((item) => item.deviationType === 'no_deviation').length;
+  const technicalCount = table.items.filter((item) => item.scope === 'technical').length;
+  const businessCount = table.items.filter((item) => item.scope === 'business').length;
+
+  return (
+    <div className="deviation-panel">
+      <div className="analysis-summary">
+        <strong>偏离表摘要</strong>
+        <p>{table.summary}</p>
+      </div>
+      <div className="response-matrix-metrics">
+        <div className="metric-card">
+          <span>偏离项</span>
+          <strong>{table.items.length}</strong>
+        </div>
+        <div className="metric-card">
+          <span>无偏离</span>
+          <strong>{noDeviationCount}</strong>
+        </div>
+        <div className="metric-card">
+          <span>待确认</span>
+          <strong>{pendingCount}</strong>
+        </div>
+        <div className="metric-card">
+          <span>商务/技术</span>
+          <strong>{businessCount}/{technicalCount}</strong>
+        </div>
+      </div>
+      <div className="deviation-list">
+        {table.items.map((item) => (
+          <div className="deviation-item" key={item.id}>
+            <div className="response-matrix-head">
+              <span className={`badge ${deviationTypeBadge(item.deviationType)}`}>
+                {DEVIATION_TYPE_LABELS[item.deviationType]}
+              </span>
+              <span className="badge badge-off">{DEVIATION_SCOPE_LABELS[item.scope]}</span>
+              <span className={`badge ${item.priority === 'critical' ? 'badge-warn' : 'badge-off'}`}>
+                {RESPONSE_PRIORITY_LABELS[item.priority]}
+              </span>
+              {item.sourceResponseId && <span className="badge badge-off">{item.sourceResponseId}</span>}
+            </div>
+            <strong>{item.requirement}</strong>
+            {item.sourceClause && <span className="muted">依据：{item.sourceClause}</span>}
+            <p>
+              <strong>响应：</strong>
+              {item.response}
+            </p>
+            <p>
+              <strong>偏离说明：</strong>
+              {item.deviationDescription}
+            </p>
+            <p>
+              <strong>处理：</strong>
+              {item.handlingSuggestion}
+            </p>
+            {item.suggestedSection && (
+              <p>
+                <strong>建议落点：</strong>
+                {item.suggestedSection}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ResponseMatrixPanel({ matrix }: { matrix: ResponseMatrix }) {
   const criticalCount = matrix.items.filter((item) => item.priority === 'critical').length;
   const gapCount = matrix.items.filter((item) => ['missing', 'partial', 'risk'].includes(item.status)).length;
@@ -701,6 +792,10 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
   const [responseMatrix, setResponseMatrix] = useState<ResponseMatrix | null>(null);
   const [matrixLoading, setMatrixLoading] = useState(false);
 
+  // 商务/技术偏离表
+  const [deviationTable, setDeviationTable] = useState<DeviationTable | null>(null);
+  const [deviationLoading, setDeviationLoading] = useState(false);
+
   // 客户资料补齐
   const [materialChecklist, setMaterialChecklist] = useState<ProjectMaterialChecklist | null>(null);
   const [materialLoading, setMaterialLoading] = useState(false);
@@ -761,6 +856,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setFacts(null);
     setFactsDirty(false);
     setResponseMatrix(null);
+    setDeviationTable(null);
     setMaterialChecklist(null);
     setAudit(null);
     invalidateReadiness();
@@ -813,6 +909,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setFacts(null);
     setFactsDirty(false);
     setResponseMatrix(null);
+    setDeviationTable(null);
     setMaterialChecklist(null);
     setAudit(null);
     setReadiness(null);
@@ -852,8 +949,15 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
         .catch(() => setFacts(null));
       api
         .getResponseMatrix(current.id)
-        .then((m) => setResponseMatrix(m))
-        .catch(() => setResponseMatrix(null));
+        .then((m) => {
+          setResponseMatrix(m);
+          return api.getDeviationTable(current.id);
+        })
+        .then((table) => setDeviationTable(table))
+        .catch(() => {
+          setResponseMatrix(null);
+          setDeviationTable(null);
+        });
       api
         .getMaterialChecklist(current.id)
         .then((m) => setMaterialChecklist(m))
@@ -899,6 +1003,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setAnalysis(a);
       setIndustryProfile(null);
       setResponseMatrix(null);
+      setDeviationTable(null);
       setMaterialChecklist(null);
       setAudit(null);
       invalidateReadiness();
@@ -917,6 +1022,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       const profile = await api.generateIndustryProfile(current.id);
       setIndustryProfile(profile);
       setResponseMatrix(null);
+      setDeviationTable(null);
       setMaterialChecklist(null);
       setAudit(null);
       invalidateReadiness();
@@ -938,6 +1044,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setFacts(null);
       setFactsDirty(false);
       setResponseMatrix(null);
+      setDeviationTable(null);
       setMaterialChecklist(null);
       setAudit(null);
       invalidateReadiness();
@@ -957,6 +1064,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setOutlineDirty(false);
       if (clearResponseMatrix) {
         setResponseMatrix(null);
+        setDeviationTable(null);
         setMaterialChecklist(null);
       }
       setAudit(null);
@@ -977,6 +1085,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setFacts(f);
       setFactsDirty(false);
       setResponseMatrix(null);
+      setDeviationTable(null);
       setMaterialChecklist(null);
       setAudit(null);
       invalidateReadiness();
@@ -996,6 +1105,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setFacts(f);
       setFactsDirty(false);
       setResponseMatrix(null);
+      setDeviationTable(null);
       setMaterialChecklist(null);
       setAudit(null);
       invalidateReadiness();
@@ -1070,12 +1180,28 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       }
       const matrix = await api.generateResponseMatrix(current.id);
       setResponseMatrix(matrix);
+      setDeviationTable(null);
       setMaterialChecklist(null);
       invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setMatrixLoading(false);
+    }
+  }
+
+  async function handleGenerateDeviationTable() {
+    if (!current) return;
+    setDeviationLoading(true);
+    setError('');
+    try {
+      const table = await api.generateDeviationTable(current.id);
+      setDeviationTable(table);
+      invalidateReadiness();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeviationLoading(false);
     }
   }
 
@@ -1994,6 +2120,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                     setOutline(o);
                     setOutlineDirty(true);
                     setResponseMatrix(null);
+                    setDeviationTable(null);
                     setMaterialChecklist(null);
                     setAudit(null);
                     invalidateReadiness();
@@ -2063,6 +2190,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                   setFacts(next);
                   setFactsDirty(true);
                   setResponseMatrix(null);
+                  setDeviationTable(null);
                   setMaterialChecklist(null);
                   setAudit(null);
                   invalidateReadiness();
@@ -2112,7 +2240,30 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
               )}
             </div>
 
-            {responseMatrix && <ResponseMatrixPanel matrix={responseMatrix} />}
+            {responseMatrix && (
+              <>
+                <ResponseMatrixPanel matrix={responseMatrix} />
+                <div className="deviation-box">
+                  <div className="actions" style={{ marginBottom: deviationTable ? 16 : 0 }}>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={handleGenerateDeviationTable}
+                      disabled={deviationLoading}
+                    >
+                      <IconCheckCircle />
+                      {deviationLoading ? '生成中…' : deviationTable ? '刷新偏离表' : '生成偏离表'}
+                    </button>
+                    {deviationTable && (
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        共 {deviationTable.items.length} 条 ·{' '}
+                        {deviationTable.items.filter((item) => item.deviationType === 'pending').length} 条待确认
+                      </span>
+                    )}
+                  </div>
+                  {deviationTable && <DeviationTablePanel table={deviationTable} />}
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

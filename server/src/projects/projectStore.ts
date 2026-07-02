@@ -6,6 +6,7 @@
 //   data/projects/<id>/original.<ext> 上传的原始文件
 //   data/projects/<id>/industry-profile.json 招标书行业/采购类型画像
 //   data/projects/<id>/response-matrix.json 点对点响应矩阵
+//   data/projects/<id>/deviation-table.json 商务/技术偏离表草稿
 //   data/projects/<id>/material-checklist.json 客户资料补齐清单
 //   data/projects/<id>/materials/<itemId>/ 上传资料原文与解析文本
 //   data/projects/<id>/bid-readiness.json 提交前总检报告
@@ -21,6 +22,7 @@ import type { GlobalFacts, TenderAnalysis } from './analysis/types.js';
 import type { ConsistencyAudit } from './audit/types.js';
 import type { TenderIndustryProfile } from './industryProfile/types.js';
 import type { ResponseMatrix } from './responseMatrix/types.js';
+import type { DeviationTable } from './deviationTable/types.js';
 import type { BidReadinessReport } from './readiness/types.js';
 import type {
   ProjectMaterialChecklist,
@@ -65,6 +67,9 @@ function industryProfileFile(id: string): string {
 }
 function responseMatrixFile(id: string): string {
   return path.join(projectDir(id), 'response-matrix.json');
+}
+function deviationTableFile(id: string): string {
+  return path.join(projectDir(id), 'deviation-table.json');
 }
 function materialChecklistFile(id: string): string {
   return path.join(projectDir(id), 'material-checklist.json');
@@ -244,6 +249,7 @@ function clearGeneratedFiles(
     globalFactsFile(id),
     industryProfileFile(id),
     responseMatrixFile(id),
+    deviationTableFile(id),
     consistencyAuditFile(id),
     bidReadinessFile(id),
   ];
@@ -453,6 +459,7 @@ export function saveOutline(
   fs.writeFileSync(outlineFile(id), JSON.stringify(outline, null, 2), 'utf-8');
   if (options.clearResponseMatrix ?? true) {
     fs.rmSync(responseMatrixFile(id), { force: true });
+    fs.rmSync(deviationTableFile(id), { force: true });
     fs.rmSync(materialChecklistFile(id), { force: true });
   }
   fs.rmSync(consistencyAuditFile(id), { force: true });
@@ -478,6 +485,7 @@ export function saveAnalysis(id: string, analysis: TenderAnalysis): TenderAnalys
   fs.writeFileSync(analysisFile(id), JSON.stringify(analysis, null, 2), 'utf-8');
   fs.rmSync(industryProfileFile(id), { force: true });
   fs.rmSync(responseMatrixFile(id), { force: true });
+  fs.rmSync(deviationTableFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
@@ -500,6 +508,7 @@ export function saveIndustryProfile(id: string, profile: TenderIndustryProfile):
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(industryProfileFile(id), JSON.stringify(profile, null, 2), 'utf-8');
   fs.rmSync(responseMatrixFile(id), { force: true });
+  fs.rmSync(deviationTableFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
@@ -523,6 +532,7 @@ export function saveGlobalFacts(id: string, facts: GlobalFacts): GlobalFacts | n
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(globalFactsFile(id), JSON.stringify(facts, null, 2), 'utf-8');
   fs.rmSync(responseMatrixFile(id), { force: true });
+  fs.rmSync(deviationTableFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
@@ -544,6 +554,7 @@ export function saveResponseMatrix(id: string, matrix: ResponseMatrix): Response
   ensureDirs();
   fs.mkdirSync(projectDir(id), { recursive: true });
   fs.writeFileSync(responseMatrixFile(id), JSON.stringify(matrix, null, 2), 'utf-8');
+  fs.rmSync(deviationTableFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
@@ -553,6 +564,29 @@ export function saveResponseMatrix(id: string, matrix: ResponseMatrix): Response
 export function getResponseMatrix(id: string): ResponseMatrix | null {
   try {
     return JSON.parse(fs.readFileSync(responseMatrixFile(id), 'utf-8')) as ResponseMatrix;
+  } catch {
+    return null;
+  }
+}
+
+export function saveDeviationTable(id: string, table: DeviationTable): DeviationTable | null {
+  const current = readMeta(id);
+  if (!current) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  const normalized: DeviationTable = {
+    ...table,
+    updatedAt: nowIso(),
+  };
+  fs.writeFileSync(deviationTableFile(id), JSON.stringify(normalized, null, 2), 'utf-8');
+  fs.rmSync(bidReadinessFile(id), { force: true });
+  updateProject(id, {});
+  return normalized;
+}
+
+export function getDeviationTable(id: string): DeviationTable | null {
+  try {
+    return JSON.parse(fs.readFileSync(deviationTableFile(id), 'utf-8')) as DeviationTable;
   } catch {
     return null;
   }

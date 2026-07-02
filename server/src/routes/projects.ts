@@ -26,6 +26,8 @@ import {
   getGlobalFacts,
   saveResponseMatrix,
   getResponseMatrix,
+  saveDeviationTable,
+  getDeviationTable,
   saveMaterialChecklist,
   getMaterialChecklist,
   saveMaterialFile,
@@ -48,6 +50,7 @@ import { generateSectionContent } from '../projects/content/contentService.js';
 import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysisService.js';
 import { classifyTenderIndustry } from '../projects/industryProfile/industryProfileService.js';
 import { generateResponseMatrix } from '../projects/responseMatrix/responseMatrixService.js';
+import { generateDeviationTableFromResponseMatrix } from '../projects/deviationTable/deviationTableService.js';
 import { generateMaterialChecklist } from '../projects/materialChecklist/materialChecklistService.js';
 import { auditConsistency } from '../projects/audit/consistencyAuditService.js';
 import { buildBidReadinessReport } from '../projects/readiness/readinessService.js';
@@ -513,6 +516,31 @@ projectsRouter.post('/:id/response-matrix/generate', async (req, res) => {
     res.json(matrix);
   } catch (err) {
     res.status(errorStatus(err)).json({ message: errorMessage(err, '响应矩阵生成失败') });
+  }
+});
+
+// 读取商务/技术偏离表草稿
+projectsRouter.get('/:id/deviation-table', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const table = getDeviationTable(req.params.id);
+  if (!table) return res.status(404).json({ message: '尚未生成偏离表' });
+  res.json(table);
+});
+
+// 根据响应矩阵生成/刷新商务技术偏离表草稿
+projectsRouter.post('/:id/deviation-table/generate', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const matrix = getResponseMatrix(req.params.id);
+  if (!matrix) return res.status(400).json({ message: '请先生成响应矩阵' });
+
+  try {
+    const table = generateDeviationTableFromResponseMatrix(matrix);
+    saveDeviationTable(req.params.id, table);
+    res.json(table);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '偏离表生成失败') });
   }
 });
 

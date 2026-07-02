@@ -13,6 +13,7 @@ import type {
   BillingPlanCode,
   BillingOverview,
   ConsistencyAudit,
+  DeviationTable,
   DuplicateCheckResult,
   GlobalFacts,
   KnowledgeOverview,
@@ -404,6 +405,16 @@ export const api = {
   },
   generateResponseMatrix(id: string): Promise<ResponseMatrix> {
     return jsonFetch<ResponseMatrix>(`/api/projects/${id}/response-matrix/generate`, {
+      method: 'POST',
+    });
+  },
+
+  // ===== 商务/技术偏离表 =====
+  getDeviationTable(id: string): Promise<DeviationTable> {
+    return jsonFetch<DeviationTable>(`/api/projects/${id}/deviation-table`);
+  },
+  generateDeviationTable(id: string): Promise<DeviationTable> {
+    return jsonFetch<DeviationTable>(`/api/projects/${id}/deviation-table/generate`, {
       method: 'POST',
     });
   },

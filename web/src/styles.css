@@ -1653,6 +1653,7 @@ p {
 .facts-editor,
 .industry-profile-panel,
 .readiness-panel,
+.deviation-panel,
 .response-matrix-panel,
 .material-panel,
 .audit-panel {
@@ -1662,6 +1663,12 @@ p {
 }
 
 .audit-box {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.deviation-box {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
@@ -1966,7 +1973,20 @@ p {
   gap: var(--space-3);
 }
 
+.deviation-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
 .response-matrix-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.deviation-item {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -1989,7 +2009,22 @@ p {
   margin-bottom: var(--space-1);
 }
 
+.deviation-item > strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  margin-bottom: var(--space-1);
+}
+
 .response-matrix-item p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.deviation-item p {
   margin: var(--space-1) 0 0;
   color: var(--text-soft);
   font-size: 13px;

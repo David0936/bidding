@@ -394,6 +394,32 @@ export interface ResponseMatrix {
   generatedAt: string;
 }
 
+// ===== 商务/技术偏离表 =====
+export type DeviationScope = 'business' | 'technical';
+export type DeviationType = 'no_deviation' | 'positive' | 'negative' | 'pending' | 'not_applicable';
+
+export interface DeviationTableItem {
+  id: string;
+  sourceResponseId?: string;
+  scope: DeviationScope;
+  deviationType: DeviationType;
+  priority: ResponseItemPriority;
+  sourceClause?: string;
+  requirement: string;
+  response: string;
+  deviationDescription: string;
+  handlingSuggestion: string;
+  suggestedSection?: string;
+  risk?: string;
+}
+
+export interface DeviationTable {
+  summary: string;
+  items: DeviationTableItem[];
+  generatedAt: string;
+  updatedAt: string;
+}
+
 // ===== 客户资料补齐清单 =====
 export type MaterialItemCategory =
   | 'qualification'
