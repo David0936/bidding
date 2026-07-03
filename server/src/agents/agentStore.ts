@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS_DIR, ensureDirs } from '../store/paths.js';
 import type {
+  AgentAdminOverview,
   AgentApplication,
   AgentOverview,
   AgentProgramTier,
@@ -133,6 +134,34 @@ export function getAgentOverview(accountId: string): AgentOverview {
     referrals,
     summary: summarize(referrals),
   };
+}
+
+export function getAdminAgentOverview(): AgentAdminOverview {
+  const state = readState();
+  const referrals = [...state.referrals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return {
+    program: AGENT_PROGRAM,
+    applications: [...state.applications].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    profiles: [...state.profiles].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    referrals,
+    summary: {
+      ...summarize(referrals),
+      agentCount: state.profiles.length,
+      applicationCount: state.applications.length,
+    },
+  };
+}
+
+export function settleAgentReferral(referralId: string): AgentAdminOverview {
+  const state = readState();
+  const referral = state.referrals.find((item) => item.id === referralId);
+  if (!referral) throw new AgentError('线索记录不存在。', 404);
+  const timestamp = nowIso();
+  referral.status = 'settled';
+  referral.settledAt = timestamp;
+  referral.updatedAt = timestamp;
+  writeState(state);
+  return getAdminAgentOverview();
 }
 
 export function applyAgent(

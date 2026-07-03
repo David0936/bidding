@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type {
+  AgentAdminOverview,
+  AgentReferral,
   AdminBillingOverview,
   BillingAccount,
   BillingAccountStatus,
@@ -11,7 +13,7 @@ import type {
 import { IconAlertTriangle, IconCheckCircle, IconPlug, IconSave, IconSettings, IconWallet } from '../components/Icons';
 import SettingsPage from './SettingsPage';
 
-type AdminTab = 'billing' | 'models';
+type AdminTab = 'billing' | 'agents' | 'models';
 
 const FEATURE_LABELS: Record<BillingFeatureCode, string> = {
   workspace: '标书工作台',
@@ -82,6 +84,10 @@ function formatCredits(value: number) {
   return `${value.toFixed(2)} 点`;
 }
 
+function formatMoney(cents: number) {
+  return `¥${(cents / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function formatTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -106,6 +112,16 @@ function accountStatusText(status: BillingAccountStatus) {
 
 function planText(code: BillingPlanCode) {
   return PLAN_PRESETS[code]?.name ?? code;
+}
+
+function agentTypeText(type: 'personal' | 'enterprise') {
+  return type === 'enterprise' ? '企业代理人' : '个人代理人';
+}
+
+function referralStatusText(status: AgentReferral['status']) {
+  if (status === 'settled') return '已结算';
+  if (status === 'pending_settlement') return '待结算';
+  return '线索';
 }
 
 function planExpiryText(account: BillingAccount) {
@@ -155,6 +171,7 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
   const [loggingIn, setLoggingIn] = useState(false);
   const [tab, setTab] = useState<AdminTab>('billing');
   const [overview, setOverview] = useState<AdminBillingOverview | null>(null);
+  const [agentOverview, setAgentOverview] = useState<AgentAdminOverview | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [accountQuery, setAccountQuery] = useState('');
   const [accountNameDraft, setAccountNameDraft] = useState('');
@@ -164,6 +181,7 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
   const [projectLimitDraft, setProjectLimitDraft] = useState(2);
   const [featureFlagsDraft, setFeatureFlagsDraft] = useState<BillingFeatureFlags>(PLAN_PRESETS.trial.featureFlags);
   const [savingAccount, setSavingAccount] = useState(false);
+  const [settlingReferralId, setSettlingReferralId] = useState('');
   const [credits, setCredits] = useState(100);
   const [description, setDescription] = useState('线下公对公收款，管理员手工分配额度');
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -172,6 +190,15 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
     const next = await api.getAdminBillingOverview();
     setOverview(next);
     setSelectedAccountId((current) => current || next.accounts[0]?.id || '');
+  }
+
+  async function loadAgentOverview() {
+    setAgentOverview(await api.getAdminAgentOverview());
+  }
+
+  async function refreshCurrentTab() {
+    if (tab === 'agents') await loadAgentOverview();
+    else if (tab === 'billing') await loadAdminOverview();
   }
 
   useEffect(() => {
@@ -187,6 +214,11 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
       })
       .finally(() => setChecking(false));
   }, []);
+
+  useEffect(() => {
+    if (!authed || tab !== 'agents' || agentOverview) return;
+    loadAgentOverview().catch((e) => setMessage({ ok: false, text: e instanceof Error ? e.message : String(e) }));
+  }, [agentOverview, authed, tab]);
 
   const selectedAccount = useMemo(
     () => overview?.accounts.find((account) => account.id === selectedAccountId) ?? null,
@@ -303,6 +335,19 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
     }
   }
 
+  async function handleSettleReferral(referralId: string) {
+    setSettlingReferralId(referralId);
+    setMessage(null);
+    try {
+      setAgentOverview(await api.settleAgentReferral(referralId));
+      setMessage({ ok: true, text: '代理佣金已标记为已结算。' });
+    } catch (e) {
+      setMessage({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSettlingReferralId('');
+    }
+  }
+
   function handleLogout() {
     api.adminLogout();
     setAuthed(false);
@@ -380,6 +425,10 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
           <IconWallet />
           客户额度
         </button>
+        <button className={tab === 'agents' ? 'active' : ''} onClick={() => setTab('agents')}>
+          <IconWallet />
+          代理结算
+        </button>
         <button className={tab === 'models' ? 'active' : ''} onClick={() => setTab('models')}>
           <IconSettings />
           模型配置
@@ -387,7 +436,7 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
       </div>
 
       <div className="actions admin-actions">
-        <button className="btn btn-ghost btn-sm" onClick={() => void loadAdminOverview()}>
+        <button className="btn btn-ghost btn-sm" onClick={() => void refreshCurrentTab()}>
           <IconSave />
           刷新后台数据
         </button>
@@ -398,6 +447,120 @@ export default function AdminPage({ onBackToCustomer }: AdminPageProps) {
 
       {tab === 'models' ? (
         <SettingsPage />
+      ) : tab === 'agents' ? (
+        <>
+          <div className="billing-summary admin-summary">
+            <div className="metric-card">
+              <span>代理人数</span>
+              <strong>{agentOverview?.summary.agentCount ?? 0}</strong>
+            </div>
+            <div className="metric-card">
+              <span>申请记录</span>
+              <strong>{agentOverview?.summary.applicationCount ?? 0}</strong>
+            </div>
+            <div className="metric-card">
+              <span>绑定客户</span>
+              <strong>{agentOverview?.summary.invitedCustomerCount ?? 0}</strong>
+            </div>
+            <div className="metric-card">
+              <span>待结算佣金</span>
+              <strong>{formatMoney(agentOverview?.summary.pendingCommissionCents ?? 0)}</strong>
+            </div>
+            <div className="metric-card">
+              <span>已结算佣金</span>
+              <strong>{formatMoney(agentOverview?.summary.settledCommissionCents ?? 0)}</strong>
+            </div>
+          </div>
+
+          {message && (
+            <div className={`result ${message.ok ? 'ok' : 'err'}`}>
+              {message.ok ? <IconCheckCircle /> : <IconAlertTriangle />}
+              <span>{message.text}</span>
+            </div>
+          )}
+
+          <div className="card">
+            <h2>代理人申请</h2>
+            <p className="hint">客户提交代理资料后会生成邀请码；这里用于运营侧核对代理身份和推广策略。</p>
+            <div className="ledger-table">
+              <div className="ledger-head agent-admin-head">
+                <span>代理人</span>
+                <span>类型</span>
+                <span>邀请码</span>
+                <span>比例</span>
+                <span>提交时间</span>
+              </div>
+              {agentOverview?.applications.length ? (
+                agentOverview.applications.map((application) => {
+                  const profile = agentOverview.profiles.find((item) => item.accountId === application.accountId);
+                  return (
+                    <div className="ledger-row agent-admin-row" key={application.id}>
+                      <span>
+                        <strong>{application.companyName || application.applicantName}</strong>
+                        <em>{application.phone || application.accountId}</em>
+                      </span>
+                      <span>{agentTypeText(application.type)}</span>
+                      <span>{profile?.inviteCode ?? '未生成'}</span>
+                      <span>
+                        {profile
+                          ? `佣金 ${Math.round(profile.commissionRate * 100)}% / 返利 ${Math.round(profile.customerRebateRate * 100)}%`
+                          : '待开通'}
+                      </span>
+                      <span>{formatTime(application.createdAt)}</span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="empty">暂无代理申请</div>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <h2>线索与佣金结算</h2>
+            <p className="hint">客户线下充值到账后，可把对应佣金标记为已结算；后续可接入更细的财务审核流。</p>
+            <div className="ledger-table">
+              <div className="ledger-head agent-referral-admin-head">
+                <span>客户</span>
+                <span>邀请码</span>
+                <span>充值/佣金</span>
+                <span>状态</span>
+                <span>操作</span>
+              </div>
+              {agentOverview?.referrals.length ? (
+                agentOverview.referrals.map((referral) => (
+                  <div className="ledger-row agent-referral-admin-row" key={referral.id}>
+                    <span>
+                      <strong>{referral.customerName}</strong>
+                      <em>{referral.customerEmail || formatTime(referral.createdAt)}</em>
+                    </span>
+                    <span>{referral.inviteCode}</span>
+                    <span>
+                      <strong>{formatMoney(referral.rechargeCents)}</strong>
+                      <em>佣金 {formatMoney(referral.commissionCents)}</em>
+                    </span>
+                    <span>
+                      <span className={`badge ${referral.status === 'settled' ? 'badge-on' : 'badge-warn'}`}>
+                        {referralStatusText(referral.status)}
+                      </span>
+                    </span>
+                    <span>
+                      <button
+                        className="mini-btn"
+                        onClick={() => void handleSettleReferral(referral.id)}
+                        disabled={referral.status === 'settled' || settlingReferralId === referral.id}
+                      >
+                        {settlingReferralId === referral.id ? '处理中…' : '标记已结算'}
+                      </button>
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="empty">暂无代理线索</div>
+              )}
+            </div>
+          </div>
+        </>
       ) : (
         <>
           <div className="billing-summary admin-summary">

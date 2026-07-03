@@ -1,6 +1,7 @@
 // 与后端交互的轻量封装
 import type {
   AIConfig,
+  AgentAdminOverview,
   AgentOverview,
   AgentType,
   AdminBillingOverview,
@@ -304,6 +305,14 @@ export const api = {
     return jsonFetch<AgentOverview>('/api/agents/referrals', {
       method: 'POST',
       body: JSON.stringify(input),
+    });
+  },
+  getAdminAgentOverview(): Promise<AgentAdminOverview> {
+    return adminJsonFetch<AgentAdminOverview>('/api/agents/admin/overview');
+  },
+  settleAgentReferral(referralId: string): Promise<AgentAdminOverview> {
+    return adminJsonFetch<AgentAdminOverview>(`/api/agents/admin/referrals/${referralId}/settle`, {
+      method: 'POST',
     });
   },
 

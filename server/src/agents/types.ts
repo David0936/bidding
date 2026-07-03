@@ -68,6 +68,17 @@ export interface AgentOverview {
   summary: AgentSummary;
 }
 
+export interface AgentAdminOverview {
+  program: AgentProgramTier[];
+  applications: AgentApplication[];
+  profiles: AgentProfile[];
+  referrals: AgentReferral[];
+  summary: AgentSummary & {
+    agentCount: number;
+    applicationCount: number;
+  };
+}
+
 export interface AgentState {
   applications: AgentApplication[];
   profiles: AgentProfile[];

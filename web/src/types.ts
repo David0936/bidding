@@ -278,6 +278,17 @@ export interface AgentOverview {
   };
 }
 
+export interface AgentAdminOverview {
+  program: AgentProgramTier[];
+  applications: AgentApplication[];
+  profiles: AgentProfile[];
+  referrals: AgentReferral[];
+  summary: AgentOverview['summary'] & {
+    agentCount: number;
+    applicationCount: number;
+  };
+}
+
 // ===== 标书项目 =====
 export type TenderFileType = 'pdf' | 'docx' | 'txt' | 'md';
 export type BidSectionMode = 'single' | 'multiple';

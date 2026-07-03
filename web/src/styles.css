@@ -739,6 +739,32 @@ p {
   width: max-content;
 }
 
+.agent-admin-head,
+.agent-admin-row {
+  grid-template-columns:
+    minmax(180px, 1.2fr)
+    minmax(86px, 0.5fr)
+    minmax(110px, 0.55fr)
+    minmax(170px, 0.9fr)
+    minmax(140px, 0.75fr);
+}
+
+.agent-referral-admin-head,
+.agent-referral-admin-row {
+  grid-template-columns:
+    minmax(180px, 1.2fr)
+    minmax(110px, 0.55fr)
+    minmax(130px, 0.7fr)
+    minmax(90px, 0.45fr)
+    minmax(110px, 0.55fr);
+}
+
+.agent-admin-row > span,
+.agent-referral-admin-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .account-status-stack {
   display: flex;
   align-items: center;
