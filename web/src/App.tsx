@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import AdminPage from './pages/AdminPage';
+import AgentPage from './pages/AgentPage';
 import AuthPage from './pages/AuthPage';
 import DuplicateCheckPage from './pages/DuplicateCheckPage';
 import BillingPage from './pages/BillingPage';
@@ -11,7 +12,7 @@ import { IconDocumentText, IconSettings, IconWallet } from './components/Icons';
 import { api } from './api';
 import type { AuthProfile } from './types';
 
-type Tab = 'home' | 'projects' | 'knowledge' | 'duplicate' | 'rejection' | 'billing' | 'admin';
+type Tab = 'home' | 'projects' | 'knowledge' | 'duplicate' | 'rejection' | 'billing' | 'agent' | 'admin';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('home');
@@ -137,6 +138,14 @@ export default function App() {
           <IconWallet />
           <span>额度中心</span>
         </button>
+        <button
+          type="button"
+          className={`nav-item ${tab === 'agent' ? 'active' : ''}`}
+          onClick={() => setTab('agent')}
+        >
+          <IconWallet />
+          <span>代理人</span>
+        </button>
         <div className="nav-spacer" />
         <button
           type="button"
@@ -172,6 +181,7 @@ export default function App() {
         {tab === 'duplicate' && <DuplicateCheckPage />}
         {tab === 'rejection' && <RejectionCheckPage onGoSettings={() => setTab('admin')} />}
         {tab === 'billing' && <BillingPage />}
+        {tab === 'agent' && <AgentPage />}
         {tab === 'admin' && <AdminPage />}
       </main>
     </div>

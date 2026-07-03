@@ -12,6 +12,7 @@ import { knowledgeRouter } from './routes/knowledge.js';
 import { billingRouter } from './routes/billing.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
+import { agentsRouter } from './routes/agents.js';
 import { createRequestContextMiddleware } from './billing/requestContext.js';
 
 export interface CreateAppOptions {
@@ -64,6 +65,9 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
 
   // 标书检查工具（查重、废标项检查等）
   app.use('/api/checks', checksRouter);
+
+  // 代理人 / 推广线索
+  app.use('/api/agents', agentsRouter);
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ ok: false, message: '接口不存在' });

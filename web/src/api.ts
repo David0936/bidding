@@ -1,6 +1,8 @@
 // 与后端交互的轻量封装
 import type {
   AIConfig,
+  AgentOverview,
+  AgentType,
   AdminBillingOverview,
   AdminLoginResult,
   AdminMeResult,
@@ -271,6 +273,37 @@ export const api = {
     return adminJsonFetch<AdminBillingOverview>(`/api/billing/admin/accounts/${accountId}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
+    });
+  },
+
+  // ===== 代理人 =====
+  getAgentOverview(): Promise<AgentOverview> {
+    return jsonFetch<AgentOverview>('/api/agents/overview');
+  },
+  applyAgent(input: {
+    type: AgentType;
+    applicantName: string;
+    phone: string;
+    companyName?: string;
+    city?: string;
+    industry?: string;
+    channel?: string;
+    note?: string;
+  }): Promise<AgentOverview> {
+    return jsonFetch<AgentOverview>('/api/agents/apply', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  createAgentReferral(input: {
+    customerName: string;
+    customerEmail?: string;
+    rechargeCents?: number;
+    note?: string;
+  }): Promise<AgentOverview> {
+    return jsonFetch<AgentOverview>('/api/agents/referrals', {
+      method: 'POST',
+      body: JSON.stringify(input),
     });
   },
 

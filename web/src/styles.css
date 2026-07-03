@@ -26,6 +26,7 @@
   --accent: #075FD9;
   --accent-deep: #0348A8;
   --accent-soft: #E7F1FF;
+  --accent-ring: rgba(7, 95, 217, 0.16);
   --accent-cyan: #18BFEA;
 
   /* ---- 语义状态（低饱和自然色 + 描边 token） ---- */
@@ -788,6 +789,286 @@ p {
   flex-wrap: wrap;
   gap: var(--space-1);
   margin-top: var(--space-2);
+}
+
+/* ============================ 代理人 ============================ */
+.agent-summary-grid,
+.agent-layout,
+.agent-program-grid {
+  max-width: 1180px;
+}
+
+.agent-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.agent-summary-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-1);
+}
+
+.agent-summary-card span,
+.agent-summary-card em {
+  display: block;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.agent-summary-card strong {
+  display: block;
+  margin: var(--space-1) 0;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.agent-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.agent-layout .card {
+  max-width: none;
+}
+
+.agent-layout label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.agent-layout input,
+.agent-layout textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 12px;
+  font: 500 14px/1.5 var(--font-sans);
+  resize: vertical;
+}
+
+.agent-layout input:focus,
+.agent-layout textarea:focus {
+  outline: 2px solid var(--accent-ring);
+  border-color: var(--accent);
+}
+
+.agent-tier-select {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.agent-tier-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: var(--space-4);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.agent-tier-card:hover,
+.agent-tier-card[data-active='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.agent-tier-card strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.agent-tier-card span {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.agent-code-box {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.agent-code-box svg {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+}
+
+.agent-code-box span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.agent-code-box strong {
+  display: block;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+.agent-program-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.agent-program-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-1);
+}
+
+.agent-program-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.agent-program-head strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.agent-program-head span {
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--warning);
+  padding: 3px 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agent-program-card p {
+  margin: 0 0 var(--space-3);
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.agent-program-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.agent-referral-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.agent-referral-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, auto) 86px;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.agent-referral-row > div:first-child {
+  min-width: 0;
+}
+
+.agent-referral-row strong,
+.agent-referral-row span {
+  display: block;
+}
+
+.agent-referral-row > div:first-child strong {
+  color: var(--text);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-referral-row > div:first-child span {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-referral-row > div:nth-child(2) {
+  text-align: right;
+}
+
+.agent-referral-row > div:nth-child(2) span {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.agent-referral-row > div:nth-child(2) strong {
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.agent-referral-row em {
+  justify-self: end;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-soft);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.agent-referral-row em[data-status='pending_settlement'] {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.agent-referral-row em[data-status='settled'] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 /* ============================ Provider 底线 tab ============================ */
@@ -3015,6 +3296,9 @@ p {
   .check-upload-grid,
   .file-code-list,
   .project-card-grid,
+  .agent-summary-grid,
+  .agent-layout,
+  .agent-program-grid,
   .kb-layout,
   .billing-summary,
   .admin-summary,
@@ -3046,6 +3330,17 @@ p {
 
   .project-card-meta {
     grid-template-columns: 1fr;
+  }
+
+  .agent-tier-select,
+  .agent-referral-row {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-referral-row > div:nth-child(2),
+  .agent-referral-row em {
+    justify-self: stretch;
+    text-align: left;
   }
 
   .ledger-head {
