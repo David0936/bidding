@@ -110,6 +110,9 @@ export default function ContentEditor({
                   {filled && <IconCheckCircle />}
                   {filled ? '已生成' : '待生成'}
                 </span>
+                {leaf.node.estimatedWords && (
+                  <span className="badge badge-off">约 {leaf.node.estimatedWords.toLocaleString()} 字</span>
+                )}
                 <button
                   className="mini-btn"
                   onClick={() => handleRegen(leaf.node.id)}

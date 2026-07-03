@@ -19,6 +19,7 @@ import type {
   KnowledgeOverview,
   KnowledgeUploadResult,
   Outline,
+  OutlineVariantsResult,
   Project,
   ProjectMaterialChecklist,
   RedactedAIConfig,
@@ -375,6 +376,9 @@ export const api = {
   },
   generateOutline(id: string): Promise<Outline> {
     return jsonFetch<Outline>(`/api/projects/${id}/outline/generate`, { method: 'POST' });
+  },
+  generateOutlineVariants(id: string): Promise<OutlineVariantsResult> {
+    return jsonFetch<OutlineVariantsResult>(`/api/projects/${id}/outline/variants`, { method: 'POST' });
   },
   saveOutline(id: string, outline: Outline, options?: { clearResponseMatrix?: boolean }): Promise<Outline> {
     return jsonFetch<Outline>(`/api/projects/${id}/outline`, {

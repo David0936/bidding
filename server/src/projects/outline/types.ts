@@ -9,6 +9,8 @@ export interface OutlineNode {
   children: OutlineNode[];
   /** 正文内容（仅叶子节点；M4 生成填充） */
   content?: string;
+  /** 叶子章节预计生成字数，用于控制正文篇幅 */
+  estimatedWords?: number;
 }
 
 export interface Outline {
@@ -18,4 +20,16 @@ export interface Outline {
   nodes: OutlineNode[];
   /** 最近生成/保存时间 */
   updatedAt: string;
+}
+
+export interface OutlineVariant {
+  id: string;
+  name: string;
+  summary: string;
+  outline: Outline;
+}
+
+export interface OutlineVariantsResult {
+  variants: OutlineVariant[];
+  generatedAt: string;
 }

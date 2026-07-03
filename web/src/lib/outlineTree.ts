@@ -31,3 +31,7 @@ export function countGenerated(outline: Outline): { total: number; done: number 
     done: leaves.filter((l) => (l.node.content ?? '').trim().length > 0).length,
   };
 }
+
+export function sumEstimatedWords(outline: Outline): number {
+  return collectLeaves(outline.nodes).reduce((sum, leaf) => sum + Math.max(0, Number(leaf.node.estimatedWords ?? 0)), 0);
+}

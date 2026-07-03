@@ -8,6 +8,7 @@ import type {
   DeviationTableItem,
   GlobalFacts,
   Outline,
+  OutlineVariant,
   Project,
   ProjectMaterialChecklist,
   ProjectMaterialItem,
@@ -215,6 +216,23 @@ const AUTO_INTAKE_STAGE_LABELS: Record<AutoIntakeStage, string> = {
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
+}
+
+function collectOutlineLeafStats(nodes: Outline['nodes']): { leafCount: number; estimatedWords: number } {
+  return nodes.reduce(
+    (acc, node) => {
+      if (node.children.length === 0) {
+        acc.leafCount += 1;
+        acc.estimatedWords += Math.max(0, Number(node.estimatedWords ?? 0));
+        return acc;
+      }
+      const child = collectOutlineLeafStats(node.children);
+      acc.leafCount += child.leafCount;
+      acc.estimatedWords += child.estimatedWords;
+      return acc;
+    },
+    { leafCount: 0, estimatedWords: 0 },
+  );
 }
 
 function newPlacementId() {
@@ -533,6 +551,53 @@ function IndustryProfilePanel({ profile }: { profile: TenderIndustryProfile }) {
   );
 }
 
+function OutlineVariantsPanel({
+  variants,
+  selectedId,
+  onSelect,
+}: {
+  variants: OutlineVariant[];
+  selectedId: string;
+  onSelect: (variant: OutlineVariant) => void;
+}) {
+  return (
+    <div className="outline-variant-grid">
+      {variants.map((variant) => {
+        const stats = collectOutlineLeafStats(variant.outline.nodes);
+        return (
+          <div className="outline-variant-card" data-selected={selectedId === variant.id} key={variant.id}>
+            <div className="outline-variant-head">
+              <div>
+                <strong>{variant.name}</strong>
+                <p>{variant.summary}</p>
+              </div>
+              <button className="mini-btn" onClick={() => onSelect(variant)}>
+                <IconCheckCircle />
+                选择方案
+              </button>
+            </div>
+            <div className="outline-variant-meta">
+              <span>{variant.outline.nodes.length} 章</span>
+              <span>{stats.leafCount} 节</span>
+              {stats.estimatedWords > 0 && <span>约 {stats.estimatedWords.toLocaleString()} 字</span>}
+            </div>
+            <div className="outline-variant-preview">
+              {variant.outline.nodes.slice(0, 5).map((node) => (
+                <div key={node.id}>
+                  <strong>{node.title}</strong>
+                  {node.children.slice(0, 3).map((child) => (
+                    <span key={child.id}>{child.title}</span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function responseStatusBadge(status: ResponseMatrixItem['status']) {
   if (status === 'covered') return 'badge-on';
   if (status === 'not_applicable') return 'badge-off';
@@ -815,6 +880,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
 
   // 目录相关
   const [outline, setOutline] = useState<Outline | null>(null);
+  const [outlineVariants, setOutlineVariants] = useState<OutlineVariant[]>([]);
+  const [selectedOutlineVariantId, setSelectedOutlineVariantId] = useState('');
   const [outlineDirty, setOutlineDirty] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
   const [savingOutline, setSavingOutline] = useState(false);
@@ -891,6 +958,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       setIndustryProfile(null);
     }
     setOutline(null);
+    setOutlineVariants([]);
+    setSelectedOutlineVariantId('');
     setOutlineDirty(false);
     setFacts(null);
     setFactsDirty(false);
@@ -946,6 +1015,8 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setAnalysis(null);
     setIndustryProfile(null);
     setOutline(null);
+    setOutlineVariants([]);
+    setSelectedOutlineVariantId('');
     setOutlineDirty(false);
     setFacts(null);
     setFactsDirty(false);
@@ -1079,9 +1150,14 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     setGenLoading(true);
     setError('');
     try {
-      const o = await api.generateOutline(current.id);
-      setOutline(o);
-      setOutlineDirty(false);
+      const result = await api.generateOutlineVariants(current.id);
+      setOutlineVariants(result.variants);
+      const first = result.variants[0];
+      if (first) {
+        setSelectedOutlineVariantId(first.id);
+        setOutline(first.outline);
+        setOutlineDirty(true);
+      }
       setFacts(null);
       setFactsDirty(false);
       setResponseMatrix(null);
@@ -1094,6 +1170,19 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
     } finally {
       setGenLoading(false);
     }
+  }
+
+  function handleSelectOutlineVariant(variant: OutlineVariant) {
+    setSelectedOutlineVariantId(variant.id);
+    setOutline(variant.outline);
+    setOutlineDirty(true);
+    setFacts(null);
+    setFactsDirty(false);
+    setResponseMatrix(null);
+    setDeviationTable(null);
+    setMaterialChecklist(null);
+    setAudit(null);
+    invalidateReadiness();
   }
 
   async function handleSaveOutline(clearResponseMatrix = true) {
@@ -2198,7 +2287,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
           <div>
             <h2>AI 生成目录</h2>
             <p className="hint" style={{ margin: 0 }}>
-              根据招标文件和行业画像生成结构化标书目录，可手动增删、改名后保存。
+              根据招标文件和行业画像生成 3 套目录方案，选择后可调整章节和预计字数。
             </p>
           </div>
         </div>
@@ -2214,7 +2303,7 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
                 disabled={genLoading}
               >
                 <IconPen />
-                {genLoading ? 'AI 生成中…' : outline ? '重新生成目录' : 'AI 生成目录'}
+                {genLoading ? 'AI 生成中…' : outlineVariants.length > 0 ? '重新生成 3 套方案' : 'AI 生成 3 套目录'}
               </button>
               <button className="btn btn-ghost btn-sm" onClick={onGoSettings}>
                 <IconSettings />
@@ -2222,10 +2311,18 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
               </button>
               {outline && (
                 <span className="muted" style={{ fontSize: 12 }}>
-                  共 {outline.nodes.length} 个一级章节
+                  共 {outline.nodes.length} 个一级章节 · 预计 {collectOutlineLeafStats(outline.nodes).estimatedWords.toLocaleString()} 字
                 </span>
               )}
             </div>
+
+            {outlineVariants.length > 0 && (
+              <OutlineVariantsPanel
+                variants={outlineVariants}
+                selectedId={selectedOutlineVariantId}
+                onSelect={handleSelectOutlineVariant}
+              />
+            )}
 
             {outline && (
               <>

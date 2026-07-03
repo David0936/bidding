@@ -98,8 +98,11 @@ export async function generateSectionContent(
     '【当前需要撰写的章节】',
     `章节路径：${target.path.join(' / ')}`,
     `章节标题：${target.node.title}`,
+    `预计字数：${target.node.estimatedWords ? `约 ${target.node.estimatedWords} 字` : '约 400~800 字'}`,
     '',
-    '请直接输出该章节的正文 Markdown，篇幅约 400~800 字（视章节重要性可适当增减）。',
+    target.node.estimatedWords
+      ? `请直接输出该章节的正文 Markdown，篇幅尽量接近 ${target.node.estimatedWords} 字，可上下浮动 20%，不要明显缩水。`
+      : '请直接输出该章节的正文 Markdown，篇幅约 400~800 字（视章节重要性可适当增减）。',
     '请结合行业/采购类型画像选择专业表达、章节重点和材料落点，但所有承诺、参数、资质和业绩必须来自招标文件、全局事实、知识库或客户上传材料。',
     '如果响应矩阵中的 suggestedSection、requirement 或 responseStrategy 与当前章节相关，必须优先覆盖；尤其不能遗漏 critical/high、missing/risk/partial 状态的要求项。',
     '正文要体现“逐条响应”的投标意识：对废标底线、评分点、交付服务、验收、质保、培训、报价边界、技术参数等要求给出明确承诺或实现方式。',

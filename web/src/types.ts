@@ -281,12 +281,25 @@ export interface OutlineNode {
   title: string;
   children: OutlineNode[];
   content?: string;
+  estimatedWords?: number;
 }
 
 export interface Outline {
   title: string;
   nodes: OutlineNode[];
   updatedAt: string;
+}
+
+export interface OutlineVariant {
+  id: string;
+  name: string;
+  summary: string;
+  outline: Outline;
+}
+
+export interface OutlineVariantsResult {
+  variants: OutlineVariant[];
+  generatedAt: string;
 }
 
 // ===== 招标文件关键项解析 =====

@@ -37,7 +37,8 @@ export function renderOutlineText(outline: Outline): string {
   const lines: string[] = [outline.title];
   const walk = (nodes: OutlineNode[], depth: number) => {
     for (const n of nodes) {
-      lines.push('  '.repeat(depth) + '- ' + n.title);
+      const words = n.estimatedWords ? `（约 ${n.estimatedWords} 字）` : '';
+      lines.push('  '.repeat(depth) + '- ' + n.title + words);
       walk(n.children, depth + 1);
     }
   };

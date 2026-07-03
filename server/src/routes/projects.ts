@@ -45,7 +45,7 @@ import {
 } from '../projects/projectStore.js';
 import { parseDocument, detectFileType } from '../projects/docParser.js';
 import { detectBidSections } from '../projects/bidSections.js';
-import { generateOutline } from '../projects/outline/outlineService.js';
+import { generateOutline, generateOutlineVariants } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
 import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysisService.js';
 import { classifyTenderIndustry } from '../projects/industryProfile/industryProfileService.js';
@@ -439,6 +439,27 @@ projectsRouter.post('/:id/outline/generate', async (req, res) => {
     res.json(outline);
   } catch (err) {
     res.status(errorStatus(err)).json({ message: errorMessage(err, '目录生成失败') });
+  }
+});
+
+// AI 生成 3 套目录方案（供用户选择）
+projectsRouter.post('/:id/outline/variants', async (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const tenderText = getTenderText(req.params.id);
+  if (!tenderText) return res.status(400).json({ message: '请先上传并解析招标文件' });
+
+  try {
+    const variants = await generateOutlineVariants(
+      loadConfig(),
+      tenderText,
+      project.name,
+      listKnowledgeItems(currentAccountId(req)),
+      getOriginalPlanText(req.params.id),
+    );
+    res.json(variants);
+  } catch (err) {
+    res.status(errorStatus(err)).json({ message: errorMessage(err, '目录方案生成失败') });
   }
 });
 

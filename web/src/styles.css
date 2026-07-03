@@ -1704,6 +1704,34 @@ p {
 .outline-editor {
   margin-top: var(--space-4);
 }
+.outline-editor-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.outline-total {
+  min-width: 150px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--space-3);
+}
+.outline-total span,
+.outline-words span {
+  display: block;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.outline-total strong {
+  display: block;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.5;
+}
 .outline-tree {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -1756,6 +1784,26 @@ p {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+.outline-words {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+.outline-words span {
+  white-space: nowrap;
+}
+.outline-words input {
+  width: 98px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: var(--surface);
+}
 .outline-actions {
   display: flex;
   gap: var(--space-1);
@@ -1765,6 +1813,94 @@ p {
 .outline-row:hover .outline-actions,
 .outline-row:focus-within .outline-actions {
   opacity: 1;
+}
+
+.outline-variant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.outline-variant-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-1);
+}
+
+.outline-variant-card[data-selected='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.outline-variant-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.outline-variant-head strong {
+  display: block;
+  color: var(--accent);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.outline-variant-head p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.outline-variant-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.outline-variant-meta span {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-soft);
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.outline-variant-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.outline-variant-preview div {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.outline-variant-preview strong,
+.outline-variant-preview span {
+  display: block;
+}
+
+.outline-variant-preview strong {
+  margin-bottom: var(--space-1);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.outline-variant-preview span {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 /* ============================ 正文编辑器 ============================ */
@@ -2766,6 +2902,18 @@ p {
 
   .outline-input {
     min-width: calc(100% - 24px);
+  }
+
+  .outline-editor-head,
+  .outline-variant-head,
+  .outline-words {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .outline-total,
+  .outline-words input {
+    width: 100%;
   }
 
   .outline-actions {
