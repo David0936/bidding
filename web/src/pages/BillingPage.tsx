@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { BillingFeatureCode, BillingOverview, BillingTransaction, PaymentOrder } from '../types';
+import type { BillingFeatureCode, BillingOverview, BillingTransaction, PaymentOrder, PricingPackage } from '../types';
 import { IconAlertTriangle, IconCheckCircle, IconPlus, IconWallet } from '../components/Icons';
 
 const BILLING_FEATURE_LABELS: Record<BillingFeatureCode, string> = {
@@ -26,6 +26,11 @@ const TRANSACTION_FEATURE_LABELS: Record<string, string> = {
 
 function formatCredits(value: number) {
   return `${value.toFixed(2)} 点`;
+}
+
+function formatWordQuota(value: number) {
+  if (value >= 10000) return `${(value / 10000).toLocaleString('zh-CN')} 万字`;
+  return `${value.toLocaleString('zh-CN')} 字`;
 }
 
 function formatMoney(cents: number, currency: string) {
@@ -76,11 +81,51 @@ function transactionMeta(tx: BillingTransaction) {
   return parts.join(' / ') || tx.description;
 }
 
+function PackageGrid({
+  packages,
+  selectedCode,
+  currency,
+  onSelect,
+}: {
+  packages: PricingPackage[];
+  selectedCode: string;
+  currency: string;
+  onSelect: (pkg: PricingPackage) => void;
+}) {
+  if (packages.length === 0) return null;
+  return (
+    <div className="pricing-package-grid">
+      {packages.map((pkg) => (
+        <button
+          type="button"
+          className="pricing-package-card"
+          data-selected={selectedCode === pkg.code}
+          data-highlight={pkg.highlight}
+          onClick={() => onSelect(pkg)}
+          key={pkg.code}
+        >
+          <span className="pricing-package-head">
+            <strong>{pkg.name}</strong>
+            {pkg.discountLabel && <em>{pkg.discountLabel}</em>}
+          </span>
+          <span>{pkg.subtitle}</span>
+          <b>{formatWordQuota(pkg.wordQuota)}</b>
+          <span className="pricing-package-price">
+            {pkg.originalAmountCents && <del>{formatMoney(pkg.originalAmountCents, currency)}</del>}
+            <strong>{formatMoney(pkg.amountCents, currency)}</strong>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function BillingPage() {
   const [overview, setOverview] = useState<BillingOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [recharging, setRecharging] = useState(false);
   const [credits, setCredits] = useState(100);
+  const [selectedPackageCode, setSelectedPackageCode] = useState('');
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function load() {
@@ -101,10 +146,13 @@ export default function BillingPage() {
   const account = overview?.account;
   const recentTransactions = overview?.transactions ?? [];
   const recentOrders = overview?.orders ?? [];
+  const pricingPackages = overview?.pricing.packages ?? [];
+  const selectedPackage = pricingPackages.find((pkg) => pkg.code === selectedPackageCode) ?? null;
   const spendRate = useMemo(() => {
     if (!overview) return '';
     return `${overview.pricing.creditsPerThousandTokens.toFixed(2)} 点 / 1000 tokens`;
   }, [overview]);
+  const wordBalance = account && overview ? Math.round(account.balanceCredits * overview.pricing.wordUnitPerCredit) : 0;
 
   async function handleCreateOrder() {
     if (!Number.isFinite(credits) || credits <= 0) {
@@ -115,9 +163,14 @@ export default function BillingPage() {
     setRecharging(true);
     setMessage(null);
     try {
-      const next = await api.createRechargeOrder(credits);
+      const next = await api.createRechargeOrder(selectedPackage?.credits ?? credits, selectedPackage?.code);
       setOverview(next);
-      setMessage({ ok: true, text: `已创建 ${formatCredits(credits)} 的充值订单。` });
+      setMessage({
+        ok: true,
+        text: selectedPackage
+          ? `已创建「${selectedPackage.name}」充值订单。`
+          : `已创建 ${formatCredits(credits)} 的充值订单。`,
+      });
     } catch (e) {
       setMessage({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -160,7 +213,9 @@ export default function BillingPage() {
               <span>{account.planName}</span>
             </div>
             <strong>{formatCredits(account.balanceCredits)}</strong>
-            <p>{account.status === 'active' ? '账户正常' : '账户已暂停'}</p>
+            <p>
+              {account.status === 'active' ? '账户正常' : '账户已暂停'} · 约 {formatWordQuota(wordBalance)}
+            </p>
           </div>
 
           <div className="billing-metrics">
@@ -219,8 +274,33 @@ export default function BillingPage() {
       )}
 
       <div className="card">
-        <h2>充值额度</h2>
+        <h2>购买字数包</h2>
         <p className="hint">提交充值申请后，请按线下公对公流程付款；管理员确认到账后会手工分配额度。</p>
+
+        {pricingPackages.length > 0 && (
+          <div className="pricing-package-section">
+            <div className="pricing-package-title">个人套餐</div>
+            <PackageGrid
+              packages={pricingPackages.filter((pkg) => pkg.audience === 'personal')}
+              selectedCode={selectedPackageCode}
+              currency={overview?.pricing.currency ?? 'CNY'}
+              onSelect={(pkg) => {
+                setSelectedPackageCode(pkg.code);
+                setCredits(pkg.credits);
+              }}
+            />
+            <div className="pricing-package-title">企业套餐</div>
+            <PackageGrid
+              packages={pricingPackages.filter((pkg) => pkg.audience === 'enterprise')}
+              selectedCode={selectedPackageCode}
+              currency={overview?.pricing.currency ?? 'CNY'}
+              onSelect={(pkg) => {
+                setSelectedPackageCode(pkg.code);
+                setCredits(pkg.credits);
+              }}
+            />
+          </div>
+        )}
 
         <div className="row">
           <div className="field">
@@ -230,21 +310,33 @@ export default function BillingPage() {
               min="1"
               step="10"
               value={credits}
-              onChange={(e) => setCredits(Number(e.target.value))}
+              onChange={(e) => {
+                setSelectedPackageCode('');
+                setCredits(Number(e.target.value));
+              }}
             />
           </div>
           <div className="field">
             <label>订单金额</label>
             <input
               value={
-                overview
-                  ? formatMoney(Math.round(credits * overview.pricing.centsPerCredit), overview.pricing.currency)
+                selectedPackage
+                  ? formatMoney(selectedPackage.amountCents, overview?.pricing.currency ?? 'CNY')
+                  : overview
+                    ? formatMoney(Math.round(credits * overview.pricing.centsPerCredit), overview.pricing.currency)
                   : '-'
               }
               readOnly
             />
           </div>
         </div>
+        {overview && (
+          <p className="hint">
+            {selectedPackage
+              ? `当前选择 ${selectedPackage.name}：${formatWordQuota(selectedPackage.wordQuota)}，到账 ${formatCredits(selectedPackage.credits)}。`
+              : `自定义额度约 ${formatWordQuota(Math.round(credits * overview.pricing.wordUnitPerCredit))}。`}
+          </p>
+        )}
 
         <div className="actions">
           <button className="btn btn-primary" onClick={handleCreateOrder} disabled={recharging}>
@@ -278,7 +370,10 @@ export default function BillingPage() {
                 <span>{formatTime(order.createdAt)}</span>
                 <span>
                   <strong>{order.description}</strong>
-                  <em>{order.id} / {formatCredits(order.credits)}</em>
+                  <em>
+                    {order.id} / {formatCredits(order.credits)}
+                    {order.wordQuota ? ` / ${formatWordQuota(order.wordQuota)}` : ''}
+                  </em>
                 </span>
                 <span>{formatMoney(order.amountCents, order.currency)}</span>
                 <span>

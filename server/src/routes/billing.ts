@@ -107,6 +107,7 @@ billingRouter.get('/orders', (_req, res) => {
 billingRouter.post('/orders', (req, res) => {
   const overview = createRechargeOrder(getCurrentAccountId(), {
     credits: Number(req.body?.credits),
+    packageCode: typeof req.body?.packageCode === 'string' ? req.body.packageCode : undefined,
     provider: normalizeProvider(req.body?.provider),
     description: String(req.body?.description ?? '').trim() || undefined,
   });

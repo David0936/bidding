@@ -60,6 +60,23 @@ export interface PricingPolicy {
   trialCredits: number;
   centsPerCredit: number;
   currency: string;
+  wordUnitPerCredit: number;
+  packages: PricingPackage[];
+}
+
+export type PricingPackageAudience = 'personal' | 'enterprise';
+
+export interface PricingPackage {
+  code: string;
+  name: string;
+  audience: PricingPackageAudience;
+  subtitle: string;
+  wordQuota: number;
+  credits: number;
+  amountCents: number;
+  originalAmountCents?: number;
+  discountLabel?: string;
+  highlight?: boolean;
 }
 
 export interface PaymentOrder {
@@ -69,6 +86,9 @@ export interface PaymentOrder {
   amountCents: number;
   currency: string;
   provider: PaymentProvider;
+  packageCode?: string;
+  packageName?: string;
+  wordQuota?: number;
   status: PaymentOrderStatus;
   description: string;
   createdAt: string;

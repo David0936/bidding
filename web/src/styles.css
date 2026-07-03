@@ -525,6 +525,104 @@ p {
   gap: var(--space-3);
 }
 
+.pricing-package-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.pricing-package-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pricing-package-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--space-3);
+}
+
+.pricing-package-card {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  padding: var(--space-4);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.pricing-package-card:hover,
+.pricing-package-card[data-selected='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pricing-package-card[data-highlight='true'] {
+  border-color: var(--accent);
+}
+
+.pricing-package-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.pricing-package-head strong {
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.pricing-package-head em {
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+}
+
+.pricing-package-card > span:not(.pricing-package-head):not(.pricing-package-price) {
+  display: block;
+  color: var(--text-soft);
+  font-size: 12px;
+  margin-bottom: var(--space-3);
+}
+
+.pricing-package-card > b {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 1.2;
+  color: var(--text);
+  margin-bottom: var(--space-3);
+}
+
+.pricing-package-price {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.pricing-package-price del {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.pricing-package-price strong {
+  color: var(--danger);
+  font-size: 18px;
+}
+
 .metric-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

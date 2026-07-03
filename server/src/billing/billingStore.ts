@@ -16,11 +16,13 @@ import type {
   BillingFeatureCode,
   BillingFeatureFlags,
   BillingPlanCode,
+  PricingPackage,
 } from './types.js';
 
 const BILLING_FILE = path.join(BILLING_DIR, 'ledger.json');
 const FEATURE_CODES: BillingFeatureCode[] = ['workspace', 'export', 'knowledge', 'duplicateCheck', 'rejectionCheck', 'seal'];
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DEFAULT_WORD_UNIT_PER_CREDIT = 1000;
 
 const PLAN_PRESETS: Record<
   BillingPlanCode,
@@ -76,6 +78,87 @@ const PLAN_PRESETS: Record<
   },
 };
 
+const PRICING_PACKAGES: PricingPackage[] = [
+  {
+    code: 'starter_200k',
+    audience: 'personal',
+    name: '尝鲜小份',
+    subtitle: '零门槛快速体验',
+    wordQuota: 200000,
+    credits: 200,
+    amountCents: 990,
+    originalAmountCents: 10000,
+    discountLabel: '1折',
+    highlight: true,
+  },
+  {
+    code: 'partner_500k',
+    audience: 'personal',
+    name: '效率拍档',
+    subtitle: '日常标书高效解决',
+    wordQuota: 500000,
+    credits: 500,
+    amountCents: 9900,
+    originalAmountCents: 25000,
+    discountLabel: '4折',
+  },
+  {
+    code: 'accelerate_1m',
+    audience: 'personal',
+    name: '投标加速',
+    subtitle: '专业标书极速交付',
+    wordQuota: 1000000,
+    credits: 1000,
+    amountCents: 17900,
+    originalAmountCents: 50000,
+    discountLabel: '3.6折',
+  },
+  {
+    code: 'pro_6m',
+    audience: 'personal',
+    name: '标书大拿',
+    subtitle: '批量标书省心无忧',
+    wordQuota: 6000000,
+    credits: 6000,
+    amountCents: 99900,
+    originalAmountCents: 300000,
+    discountLabel: '3.3折',
+  },
+  {
+    code: 'enterprise_writer_10m',
+    audience: 'enterprise',
+    name: '全能写手',
+    subtitle: '海量内容一价全包',
+    wordQuota: 10000000,
+    credits: 10000,
+    amountCents: 158000,
+    originalAmountCents: 500000,
+    discountLabel: '3.2折',
+  },
+  {
+    code: 'enterprise_scale_30m',
+    audience: 'enterprise',
+    name: '字海巨擘',
+    subtitle: '超大规模文本利器',
+    wordQuota: 30000000,
+    credits: 30000,
+    amountCents: 438000,
+    originalAmountCents: 1500000,
+    discountLabel: '3折',
+  },
+  {
+    code: 'enterprise_carefree_50m',
+    audience: 'enterprise',
+    name: '字海无忧',
+    subtitle: '企业级无忧创作服务',
+    wordQuota: 50000000,
+    credits: 50000,
+    amountCents: 698000,
+    originalAmountCents: 2500000,
+    discountLabel: '2.8折',
+  },
+];
+
 export class BillingError extends Error {
   status: number;
 
@@ -102,12 +185,18 @@ function parseNumberEnv(name: string, fallback: number): number {
 }
 
 export function getPricingPolicy(): PricingPolicy {
+  const wordUnitPerCredit = parseNumberEnv('EASY_BIDDING_WORDS_PER_CREDIT', DEFAULT_WORD_UNIT_PER_CREDIT);
   return {
     creditsPerThousandTokens: parseNumberEnv('EASY_BIDDING_CREDITS_PER_1K_TOKENS', 1),
     minimumChargeCredits: parseNumberEnv('EASY_BIDDING_MIN_AI_CHARGE_CREDITS', 0.1),
     trialCredits: parseNumberEnv('EASY_BIDDING_TRIAL_CREDITS', 200),
     centsPerCredit: parseNumberEnv('EASY_BIDDING_CENTS_PER_CREDIT', 100),
     currency: process.env.EASY_BIDDING_PAYMENT_CURRENCY || 'CNY',
+    wordUnitPerCredit,
+    packages: PRICING_PACKAGES.map((pkg) => ({
+      ...pkg,
+      wordQuota: Math.round(pkg.credits * wordUnitPerCredit),
+    })),
   };
 }
 
@@ -506,13 +595,16 @@ function applyRecharge(
 }
 
 interface CreateOrderInput {
-  credits: number;
+  credits?: number;
+  packageCode?: string;
   provider?: PaymentProvider;
   description?: string;
 }
 
 export function createRechargeOrder(accountId: string, input: CreateOrderInput): BillingOverview {
-  const credits = roundCredits(Number(input.credits));
+  const pricing = getPricingPolicy();
+  const selectedPackage = pricing.packages.find((pkg) => pkg.code === String(input.packageCode ?? '').trim());
+  const credits = roundCredits(selectedPackage ? selectedPackage.credits : Number(input.credits));
   if (!Number.isFinite(credits) || credits <= 0) {
     throw new BillingError('充值额度必须大于 0。', 400);
   }
@@ -520,18 +612,27 @@ export function createRechargeOrder(accountId: string, input: CreateOrderInput):
   const state = readState();
   getOrCreateAccount(accountId, state);
   expirePendingOrders(state);
-  const pricing = getPricingPolicy();
   const timestamp = nowIso();
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const amountCents = selectedPackage
+    ? selectedPackage.amountCents
+    : Math.round(credits * pricing.centsPerCredit);
   const order: PaymentOrder = {
     id: orderId(),
     accountId,
     credits,
-    amountCents: Math.round(credits * pricing.centsPerCredit),
+    amountCents,
     currency: pricing.currency,
     provider: input.provider ?? 'manual',
+    packageCode: selectedPackage?.code,
+    packageName: selectedPackage?.name,
+    wordQuota: selectedPackage?.wordQuota ?? Math.round(credits * pricing.wordUnitPerCredit),
     status: 'pending',
-    description: input.description?.trim() || `充值 ${credits.toFixed(2)} 点额度`,
+    description:
+      input.description?.trim() ||
+      (selectedPackage
+        ? `${selectedPackage.name} · ${selectedPackage.wordQuota.toLocaleString('zh-CN')} 字额度`
+        : `充值 ${credits.toFixed(2)} 点额度`),
     createdAt: timestamp,
     updatedAt: timestamp,
     expiresAt,

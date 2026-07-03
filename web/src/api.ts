@@ -222,10 +222,10 @@ export const api = {
   getBillingOverview(): Promise<BillingOverview> {
     return jsonFetch<BillingOverview>('/api/billing/account');
   },
-  createRechargeOrder(credits: number): Promise<BillingOverview> {
+  createRechargeOrder(credits: number, packageCode?: string): Promise<BillingOverview> {
     return jsonFetch<BillingOverview>('/api/billing/orders', {
       method: 'POST',
-      body: JSON.stringify({ credits, provider: 'manual' }),
+      body: JSON.stringify({ credits, packageCode, provider: 'manual' }),
     });
   },
   mockPayRechargeOrder(orderId: string): Promise<BillingOverview> {
