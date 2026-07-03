@@ -15,10 +15,11 @@ export const PROJECTS_DIR = path.join(DATA_DIR, 'projects');
 export const KNOWLEDGE_DIR = path.join(DATA_DIR, 'knowledge');
 export const BILLING_DIR = path.join(DATA_DIR, 'billing');
 export const AUTH_DIR = path.join(DATA_DIR, 'auth');
+export const CHECKS_DIR = path.join(DATA_DIR, 'checks');
 export const CONFIG_FILE = path.join(DATA_DIR, 'ai-config.json');
 
 export function ensureDirs(): void {
-  for (const dir of [DATA_DIR, UPLOAD_DIR, PROJECTS_DIR, KNOWLEDGE_DIR, BILLING_DIR, AUTH_DIR]) {
+  for (const dir of [DATA_DIR, UPLOAD_DIR, PROJECTS_DIR, KNOWLEDGE_DIR, BILLING_DIR, AUTH_DIR, CHECKS_DIR]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }

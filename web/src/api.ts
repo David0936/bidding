@@ -14,6 +14,7 @@ import type {
   BillingOverview,
   ConsistencyAudit,
   DeviationTable,
+  DuplicateCheckRecord,
   DuplicateCheckResult,
   GlobalFacts,
   KnowledgeOverview,
@@ -561,6 +562,9 @@ export const api = {
     const resp = await authFetch('/api/checks/duplicate', { method: 'POST', body: form });
     await throwIfNotOk(resp);
     return resp.json() as Promise<DuplicateCheckResult>;
+  },
+  getDuplicateCheckRecords(): Promise<{ records: DuplicateCheckRecord[] }> {
+    return jsonFetch<{ records: DuplicateCheckRecord[] }>('/api/checks/duplicate-records');
   },
   async runRejectionCheck(tender: File, bid: File): Promise<RejectionCheckResult> {
     const form = new FormData();

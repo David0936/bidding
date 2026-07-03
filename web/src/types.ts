@@ -584,6 +584,19 @@ export interface DuplicateCheckResult {
   groups: DuplicateSentenceGroup[];
   tenderExcludedSentenceCount: number;
   duplicateSentenceCount: number;
+  record?: DuplicateCheckRecord;
+}
+
+export interface DuplicateCheckRecord {
+  id: string;
+  accountId: string;
+  createdAt: string;
+  tenderFileName?: string;
+  bidFileNames: string[];
+  fileCount: number;
+  duplicateSentenceCount: number;
+  tenderExcludedSentenceCount: number;
+  topGroups: DuplicateSentenceGroup[];
 }
 
 // ===== 废标项检查 =====

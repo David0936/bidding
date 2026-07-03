@@ -852,7 +852,13 @@ function MaterialChecklistPanel({
   );
 }
 
-export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => void }) {
+export default function WorkspacePage({
+  onGoSettings,
+  openProjectId,
+}: {
+  onGoSettings: () => void;
+  openProjectId?: string;
+}) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -985,6 +991,13 @@ export default function WorkspacePage({ onGoSettings }: { onGoSettings: () => vo
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!openProjectId || openProjectId === currentId) return;
+    if (projects.some((project) => project.id === openProjectId)) {
+      setCurrentId(openProjectId);
+    }
+  }, [currentId, openProjectId, projects]);
 
   useEffect(() => {
     setSectionDraftId(current?.selectedBidSectionId ?? current?.bidSections[0]?.id ?? '');

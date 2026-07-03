@@ -6,6 +6,8 @@ import { loadConfig } from '../store/configStore.js';
 import { errorMessage, errorStatus } from './errors.js';
 import { getCurrentAccountId } from '../billing/requestContext.js';
 import { assertFeatureAccess } from '../billing/billingStore.js';
+import { listDuplicateRecords, saveDuplicateRecord } from '../checks/checkStore.js';
+import type { DuplicateCheckResult, DuplicateFileSummary, DuplicateSentenceGroup } from '../checks/types.js';
 
 export const checksRouter = Router();
 
@@ -13,20 +15,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 30 * 1024 * 1024, files: 12 },
 });
-
-interface DuplicateFileSummary {
-  id: string;
-  name: string;
-  charCount: number;
-  sentenceCount: number;
-}
-
-interface DuplicateSentenceGroup {
-  sentence: string;
-  files: string[];
-  fileNames: string[];
-  count: number;
-}
 
 interface RejectionCheckIssue {
   title: string;
@@ -43,6 +31,15 @@ interface RawRejectionCheck {
 }
 
 const MAX_CHECK_TEXT_CHARS = 18000;
+
+checksRouter.get('/duplicate-records', (req, res) => {
+  try {
+    assertFeatureAccess(getCurrentAccountId(), 'duplicateCheck');
+  } catch (err) {
+    return res.status(errorStatus(err, 403)).json({ message: errorMessage(err, '当前套餐未开通标书查重') });
+  }
+  res.json({ records: listDuplicateRecords(getCurrentAccountId()) });
+});
 
 function normalizeSentence(input: string): string {
   return input
@@ -167,12 +164,18 @@ checksRouter.post(
         .sort((a, b) => b.sentence.length * b.count - a.sentence.length * a.count)
         .slice(0, 500);
 
-      res.json({
+      const result: DuplicateCheckResult = {
         files: summaries,
         groups,
         tenderExcludedSentenceCount: tenderSentences.size,
         duplicateSentenceCount: groups.length,
+      };
+      const record = saveDuplicateRecord(getCurrentAccountId(), {
+        tenderFileName: tenderFile?.originalname,
+        result,
       });
+
+      res.json({ ...result, record });
     } catch (err) {
       res.status(errorStatus(err)).json({ message: errorMessage(err, '查重失败') });
     }

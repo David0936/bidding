@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { DuplicateCheckResult } from '../types';
+import type { DuplicateCheckRecord, DuplicateCheckResult } from '../types';
 import {
   IconAlertTriangle,
   IconCheckCircle,
@@ -12,15 +12,39 @@ function fileNames(files: File[]): string {
   return files.length === 0 ? '未选择' : files.map((file) => file.name).join('、');
 }
 
+function formatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
+
 export default function DuplicateCheckPage() {
   const [tender, setTender] = useState<File | null>(null);
   const [bids, setBids] = useState<File[]>([]);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<DuplicateCheckResult | null>(null);
+  const [records, setRecords] = useState<DuplicateCheckRecord[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(true);
 
   const canCheck = bids.length >= 2 && !checking;
   const topGroups = useMemo(() => result?.groups ?? [], [result]);
+
+  async function refreshRecords() {
+    setRecordsLoading(true);
+    try {
+      const next = await api.getDuplicateCheckRecords();
+      setRecords(next.records);
+    } catch {
+      setRecords([]);
+    } finally {
+      setRecordsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshRecords();
+  }, []);
 
   async function handleCheck() {
     setChecking(true);
@@ -29,6 +53,7 @@ export default function DuplicateCheckPage() {
     try {
       const res = await api.runDuplicateCheck(tender, bids);
       setResult(res);
+      await refreshRecords();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -97,10 +122,46 @@ export default function DuplicateCheckPage() {
         )}
       </div>
 
+      <div className="card" style={{ maxWidth: 920 }}>
+        <div className="step-head">
+          <div className="step-no">02</div>
+          <div>
+            <h2>查重记录</h2>
+            <p className="hint" style={{ margin: 0 }}>
+              自动保存最近查重摘要，便于项目复盘和问题定位。
+            </p>
+          </div>
+        </div>
+
+        {recordsLoading ? (
+          <div className="empty-tip">加载查重记录…</div>
+        ) : records.length === 0 ? (
+          <div className="empty-tip">暂无查重记录。</div>
+        ) : (
+          <div className="duplicate-record-list">
+            {records.slice(0, 8).map((record) => (
+              <div className="duplicate-record" key={record.id}>
+                <div>
+                  <strong>{record.bidFileNames[0] ?? '投标文件查重'}</strong>
+                  <span>
+                    {formatTime(record.createdAt)} · {record.fileCount} 份文件
+                    {record.tenderFileName ? ` · 排除源：${record.tenderFileName}` : ''}
+                  </span>
+                </div>
+                <div className="duplicate-record-stat">
+                  <strong>{record.duplicateSentenceCount}</strong>
+                  <span>重复句</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {result && (
         <div className="card" style={{ maxWidth: 920 }}>
           <div className="step-head">
-            <div className="step-no">02</div>
+            <div className="step-no">03</div>
             <div>
               <h2>查重结果</h2>
               <p className="hint" style={{ margin: 0 }}>

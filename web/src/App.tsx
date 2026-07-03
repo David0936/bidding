@@ -4,19 +4,21 @@ import AuthPage from './pages/AuthPage';
 import DuplicateCheckPage from './pages/DuplicateCheckPage';
 import BillingPage from './pages/BillingPage';
 import KnowledgeBasePage from './pages/KnowledgeBasePage';
+import ProjectManagementPage from './pages/ProjectManagementPage';
 import RejectionCheckPage from './pages/RejectionCheckPage';
 import WorkspacePage from './pages/WorkspacePage';
 import { IconDocumentText, IconSettings, IconWallet } from './components/Icons';
 import { api } from './api';
 import type { AuthProfile } from './types';
 
-type Tab = 'home' | 'knowledge' | 'duplicate' | 'rejection' | 'billing' | 'admin';
+type Tab = 'home' | 'projects' | 'knowledge' | 'duplicate' | 'rejection' | 'billing' | 'admin';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('home');
   const [authLoading, setAuthLoading] = useState(true);
   const [user, setUser] = useState<AuthProfile | null>(null);
   const [adminStandalone, setAdminStandalone] = useState(false);
+  const [workspaceProjectId, setWorkspaceProjectId] = useState('');
   // 优先使用 public/logo.png 官方 logo；不存在时回退到「易」字印章占位。
   const [logoOk, setLogoOk] = useState(true);
 
@@ -93,7 +95,15 @@ export default function App() {
           onClick={() => setTab('home')}
         >
           <IconDocumentText />
-          <span>标书工作台</span>
+          <span>写标书</span>
+        </button>
+        <button
+          type="button"
+          className={`nav-item ${tab === 'projects' ? 'active' : ''}`}
+          onClick={() => setTab('projects')}
+        >
+          <IconDocumentText />
+          <span>项目管理</span>
         </button>
         <button
           type="button"
@@ -149,7 +159,15 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {tab === 'home' && <WorkspacePage onGoSettings={() => setTab('admin')} />}
+        {tab === 'home' && <WorkspacePage onGoSettings={() => setTab('admin')} openProjectId={workspaceProjectId} />}
+        {tab === 'projects' && (
+          <ProjectManagementPage
+            onOpenProject={(projectId) => {
+              setWorkspaceProjectId(projectId);
+              setTab('home');
+            }}
+          />
+        )}
         {tab === 'knowledge' && <KnowledgeBasePage onGoSettings={() => setTab('admin')} />}
         {tab === 'duplicate' && <DuplicateCheckPage />}
         {tab === 'rejection' && <RejectionCheckPage onGoSettings={() => setTab('admin')} />}
