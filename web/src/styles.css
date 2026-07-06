@@ -1356,12 +1356,18 @@ p {
 
 /* 顶部横向主链路总览（一屏可见进度、当前位、前置依赖） */
 .flow-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
   margin-bottom: var(--space-6);
   max-width: 920px;
+  padding: var(--space-2) 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 .flow-chip {
   display: inline-flex;
@@ -1374,6 +1380,17 @@ p {
   color: var(--text-soft);
   font-size: 13px;
   font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.flow-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+/* 锚点目标预留粘性条高度，跳转后编号不被遮住 */
+.step-no {
+  scroll-margin-top: 64px;
 }
 .flow-chip .flow-no {
   font-family: var(--font-mono);
@@ -3561,17 +3578,21 @@ p {
   }
 }
 
-/* ===== 富文本编辑器工具栏与预览 ===== */
+/* =========================================================================
+   富文本编辑与预览 / 资料插入 / 分册导出（token 全量贯彻，零硬编码色）
+   ========================================================================= */
+
+/* ---- 正文编辑器：工具栏 ---- */
 .section-editor {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -3580,153 +3601,165 @@ p {
 }
 
 .mini-btn-active {
-  background: rgba(79, 105, 255, 0.14);
-  border-color: rgba(79, 105, 255, 0.5);
-  color: #3d56e0;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-deep);
 }
 
+/* ---- 正文预览：长文阅读区（17px / 1.75 / 行长 36em） ---- */
 .content-preview {
-  border: 1px solid rgba(96, 116, 168, 0.28);
-  border-radius: 10px;
-  padding: 14px 16px;
-  background: #fff;
-  max-height: 460px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  max-height: 480px;
   overflow-y: auto;
 }
 
 .md-preview {
-  font-size: 13.5px;
+  font-size: 17px;
   line-height: 1.75;
-  color: #1f2940;
+  color: var(--text);
+  max-width: 36em;
 }
 
 .md-preview p {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-3);
   text-indent: 2em;
 }
 
 .md-preview h4 {
-  margin: 12px 0 6px;
-  font-size: 14px;
+  margin: var(--space-4) 0 var(--space-2);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .md-preview li {
-  margin-left: 20px;
+  margin-left: var(--space-5);
 }
 
 .md-preview .md-ordered {
-  margin-left: 20px;
+  margin-left: var(--space-5);
 }
 
 .md-preview-empty {
-  color: #8a94ad;
+  color: var(--text-faint);
+  font-size: 14px;
 }
 
+/* ---- 预览内表格 ---- */
 .md-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 10px 0;
-  font-size: 12.5px;
+  margin: var(--space-3) 0;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .md-table th,
 .md-table td {
-  border: 1px solid rgba(96, 116, 168, 0.35);
-  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  padding: var(--space-2) var(--space-3);
   text-align: left;
   vertical-align: top;
 }
 
 .md-table th {
-  background: rgba(79, 105, 255, 0.08);
+  background: var(--surface-2);
   font-weight: 600;
 }
 
+/* ---- 预览内证照/图片 ---- */
 .md-image {
-  margin: 12px auto;
+  margin: var(--space-4) auto;
   text-align: center;
 }
 
 .md-image img {
   max-width: 100%;
   max-height: 420px;
-  border: 1px solid rgba(96, 116, 168, 0.25);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
 .md-image figcaption {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   font-size: 12px;
-  color: #6b7590;
+  color: var(--text-faint);
 }
 
 .md-image-missing,
 .md-image-loading {
-  padding: 10px 12px;
-  border: 1px dashed rgba(96, 116, 168, 0.4);
-  border-radius: 8px;
-  color: #8a94ad;
-  font-size: 12.5px;
-  margin: 8px 0;
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: 13px;
+  margin: var(--space-2) 0;
 }
 
-/* ===== 资料清单：扫描增强与插入章节 ===== */
+/* ---- 资料清单：扫描增强与插入章节 ---- */
 .material-scan-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: #4a5670;
-  margin: 10px 0 2px;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--text-soft);
+  margin: var(--space-3) 0 var(--space-1);
   cursor: pointer;
+}
+
+.material-scan-toggle input {
+  accent-color: var(--accent);
 }
 
 .material-insert-select {
   max-width: 190px;
   font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid rgba(96, 116, 168, 0.35);
-  background: #fff;
-  color: #3d56e0;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--accent-deep);
   cursor: pointer;
 }
 
-/* ===== 目录分册标记 ===== */
+/* ---- 目录分册标记 ---- */
 .outline-volume select {
   font-size: 12px;
-  padding: 3px 6px;
-  border-radius: 6px;
-  border: 1px solid rgba(96, 116, 168, 0.35);
-  background: #fff;
-  color: #4a5670;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-soft);
   cursor: pointer;
 }
 
-/* ===== 导出分册选择 ===== */
+/* ---- 导出分册选择 ---- */
 .export-volume-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: var(--space-4);
 }
 
 .export-volume-bar label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: 13px;
-  color: #33405e;
+  color: var(--text);
   font-weight: 600;
 }
 
 .export-volume-bar select {
   font-size: 13px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(96, 116, 168, 0.35);
-  background: #fff;
-  color: #1f2940;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
   cursor: pointer;
 }

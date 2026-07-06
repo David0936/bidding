@@ -1969,21 +1969,26 @@ export default function WorkspacePage({
     <div>
       <div className="page-header">
         <h1>标书工作台</h1>
-        <p>从招标文件到成稿，按“解析、行业识别、矩阵、资料、正文、总检、导出”的链路完成投标技术方案初稿。</p>
+        <p>从招标文件到成稿，按「解析、行业识别、矩阵、资料、正文、总检、导出」的链路完成投标技术方案初稿。</p>
       </div>
 
       {/* 主链路总览 */}
       <div className="flow-bar">
         {flowSteps.map((s, i) => (
           <div key={s.no} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <span
+            <button
+              type="button"
               className="flow-chip"
               data-current={currentStep === i + 1}
               data-done={s.done}
+              title={`跳到步骤 ${s.no} ${s.name}`}
+              onClick={() =>
+                document.getElementById(`step-${s.no}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
             >
               <span className="flow-no">{s.no}</span>
               <span>{s.name}</span>
-            </span>
+            </button>
             {i < flowSteps.length - 1 && (
               <span className="flow-sep">
                 <IconChevronRight />
@@ -2057,7 +2062,7 @@ export default function WorkspacePage({
       {/* Step 1 上传招标文件 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className="step-no">01</div>
+          <div className="step-no" id="step-01">01</div>
           <div>
             <h2>上传招标文件</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2311,7 +2316,7 @@ export default function WorkspacePage({
       {/* Step 2 招标文件关键项解析 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${current?.tender ? '' : 'muted-no'}`}>02</div>
+          <div className={`step-no ${current?.tender ? '' : 'muted-no'}`} id="step-02">02</div>
           <div>
             <h2>解析关键项</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2366,7 +2371,7 @@ export default function WorkspacePage({
       {/* Step 3 招标书行业/采购类型识别 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${analysis ? '' : 'muted-no'}`}>03</div>
+          <div className={`step-no ${analysis ? '' : 'muted-no'}`} id="step-03">03</div>
           <div>
             <h2>行业识别</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2408,7 +2413,7 @@ export default function WorkspacePage({
       {/* Step 4 AI 生成目录 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${industryProfile ? '' : 'muted-no'}`}>04</div>
+          <div className={`step-no ${industryProfile ? '' : 'muted-no'}`} id="step-04">04</div>
           <div>
             <h2>AI 生成目录</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2481,7 +2486,7 @@ export default function WorkspacePage({
       {/* Step 5 全局事实 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>05</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`} id="step-05">05</div>
           <div>
             <h2>全局事实</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2541,7 +2546,7 @@ export default function WorkspacePage({
       {/* Step 6 点对点响应矩阵 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${facts ? '' : 'muted-no'}`}>06</div>
+          <div className={`step-no ${facts ? '' : 'muted-no'}`} id="step-06">06</div>
           <div>
             <h2>点对点响应矩阵</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2644,7 +2649,7 @@ export default function WorkspacePage({
       {/* Step 7 客户资料补齐 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${responseMatrix ? '' : 'muted-no'}`}>07</div>
+          <div className={`step-no ${responseMatrix ? '' : 'muted-no'}`} id="step-07">07</div>
           <div>
             <h2>补充资料</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2719,7 +2724,7 @@ export default function WorkspacePage({
       {/* Step 8 AI 生成正文 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${materialChecklist ? '' : 'muted-no'}`}>08</div>
+          <div className={`step-no ${materialChecklist ? '' : 'muted-no'}`} id="step-08">08</div>
           <div>
             <h2>AI 生成正文</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2788,7 +2793,7 @@ export default function WorkspacePage({
       {/* Step 9 提交前总检 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${done8 ? '' : 'muted-no'}`}>09</div>
+          <div className={`step-no ${done8 ? '' : 'muted-no'}`} id="step-09">09</div>
           <div>
             <h2>提交前总检</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2844,7 +2849,7 @@ export default function WorkspacePage({
       {/* Step 10 导出与电子盖章 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`}>10</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`} id="step-10">10</div>
           <div>
             <h2>导出与电子盖章</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2866,7 +2871,7 @@ export default function WorkspacePage({
             {readiness?.level === 'blocked' && (
               <div className="result warn" style={{ marginTop: 0 }}>
                 <IconAlertTriangle />
-                <span>当前总检为“暂不建议提交”，仍可导出工作稿，但建议先处理阻断问题。</span>
+                <span>当前总检为「暂不建议提交」，仍可导出工作稿，但建议先处理阻断问题。</span>
               </div>
             )}
             <div className="export-volume-bar">
