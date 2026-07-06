@@ -1,4 +1,4 @@
-import type { TenderFileType } from '../types.js';
+import type { MaterialFileType, TenderFileType } from '../types.js';
 
 export type MaterialItemCategory =
   | 'qualification'
@@ -19,7 +19,7 @@ export type MaterialItemStatus = 'pending' | 'uploaded' | 'needs_review' | 'not_
 export interface ProjectMaterialFile {
   id: string;
   fileName: string;
-  fileType: TenderFileType;
+  fileType: MaterialFileType;
   charCount: number;
   uploadedAt: string;
   originalPath?: string;
@@ -37,7 +37,7 @@ export interface ProjectMaterialItem {
   purpose: string;
   sourceClause?: string;
   suggestedSection?: string;
-  acceptedFileTypes: TenderFileType[];
+  acceptedFileTypes: MaterialFileType[];
   uploadTips?: string;
   files: ProjectMaterialFile[];
 }

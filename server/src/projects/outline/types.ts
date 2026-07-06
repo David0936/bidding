@@ -1,5 +1,7 @@
 // 标书目录（大纲）数据模型。树形结构，叶子节点用于承载 M4 生成的正文。
 
+import type { BidVolume } from '../types.js';
+
 export interface OutlineNode {
   /** 稳定 ID（生成时分配） */
   id: string;
@@ -11,6 +13,8 @@ export interface OutlineNode {
   content?: string;
   /** 叶子章节预计生成字数，用于控制正文篇幅 */
   estimatedWords?: number;
+  /** 分册归属（技术标/商务标/价格标）；未标记时按标题关键词自动判定 */
+  volume?: BidVolume;
 }
 
 export interface Outline {

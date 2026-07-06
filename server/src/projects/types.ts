@@ -2,6 +2,12 @@
 
 export type TenderFileType = 'pdf' | 'docx' | 'txt' | 'md';
 
+/** 客户补充资料支持的文件类型：在招标文档格式基础上增加图片与表格 */
+export type MaterialFileType = TenderFileType | 'png' | 'jpg' | 'xlsx' | 'csv';
+
+/** 分册类型：技术标 / 商务标 / 价格标 / 其他（如资信标、封面附件） */
+export type BidVolume = 'technical' | 'business' | 'price' | 'other';
+
 export interface TenderDoc {
   /** 原始文件名 */
   fileName: string;

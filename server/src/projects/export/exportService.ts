@@ -1,14 +1,22 @@
 // 导出服务：把目录 + 正文渲染为 Markdown / Word(.docx) / PDF。
-// 正文是 Markdown，这里做基础解析：小标题、无序/有序列表、加粗、普通段落。
+// 正文是 Markdown，支持：小标题、无序/有序列表、加粗、普通段落、表格、material:// 图片引用。
 import fs from 'node:fs';
 import {
   Document,
+  ImageRun,
   Packer,
   Paragraph,
+  Table,
+  TableCell,
+  TableRow,
   TextRun,
   HeadingLevel,
   AlignmentType,
+  WidthType,
+  VerticalAlign,
 } from 'docx';
+import { parseMarkdownBlocks, parseMaterialRef, type MaterialImageRef, type TableBlock } from './markdownBlocks.js';
+import { readImageSize } from './imageSize.js';
 import fontkit from '@pdf-lib/fontkit';
 import {
   degrees,
@@ -65,8 +73,31 @@ export interface PdfSealOptions {
   placements: SealPlacement[];
 }
 
+export interface ResolvedImage {
+  buffer: Buffer;
+  mimeType: string;
+}
+
+/** 解析 material://itemId/fileId 引用为图片二进制；返回 null 表示引用无效 */
+export type MaterialImageResolver = (ref: MaterialImageRef) => ResolvedImage | null;
+
+export interface BuildDocxOptions {
+  resolveImage?: MaterialImageResolver;
+}
+
 export interface BuildPdfOptions {
   seal?: PdfSealOptions | null;
+  resolveImage?: MaterialImageResolver;
+}
+
+function resolveImageRef(ref: string, resolver?: MaterialImageResolver): ResolvedImage | null {
+  const parsed = parseMaterialRef(ref);
+  if (!parsed || !resolver) return null;
+  try {
+    return resolver(parsed);
+  } catch {
+    return null;
+  }
 }
 
 /** 把一行内含 **加粗** 的文本切分为多个 TextRun */
@@ -81,62 +112,130 @@ function inlineRuns(text: string): TextRun[] {
   return runs.length > 0 ? runs : [new TextRun(text)];
 }
 
-/** 把一段 Markdown 正文转换为 docx 段落数组 */
-function markdownToParagraphs(md: string): Paragraph[] {
-  const out: Paragraph[] = [];
-  const lines = md.replace(/\r\n/g, '\n').split('\n');
+/** Markdown 表格 → docx 表格（表头加粗，等分列宽，全宽） */
+function tableToDocx(block: TableBlock): Table {
+  const columnCount = Math.max(block.headers.length, 1);
+  const columnWidth = Math.floor(100 / columnCount);
+  const makeRow = (cells: string[], header: boolean) =>
+    new TableRow({
+      tableHeader: header,
+      children: cells.map(
+        (cell) =>
+          new TableCell({
+            verticalAlign: VerticalAlign.CENTER,
+            width: { size: columnWidth, type: WidthType.PERCENTAGE },
+            children: [
+              new Paragraph({
+                spacing: { before: 30, after: 30 },
+                children: header ? [new TextRun({ text: cell, bold: true })] : inlineRuns(cell),
+              }),
+            ],
+          }),
+      ),
+    });
 
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line.trim()) continue;
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [makeRow(block.headers, true), ...block.rows.map((row) => makeRow(row, false))],
+  });
+}
 
-    // 标题 #, ##, ### → 用加粗段落表示（不进入正式标题层级，避免打乱目录结构）
-    const heading = line.match(/^(#{1,6})\s+(.*)$/);
-    if (heading) {
-      out.push(
-        new Paragraph({
-          spacing: { before: 120, after: 60 },
-          children: [new TextRun({ text: heading[2], bold: true })],
-        }),
-      );
-      continue;
-    }
+const DOCX_IMAGE_MAX_WIDTH = 540;
 
-    // 无序列表 - / * / •
-    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
-    if (bullet) {
-      out.push(new Paragraph({ bullet: { level: 0 }, children: inlineRuns(bullet[1]) }));
-      continue;
-    }
-
-    // 有序列表 1. 2. …（保留序号为普通段落，避免额外编号配置）
-    const ordered = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    if (ordered) {
-      out.push(
-        new Paragraph({
-          indent: { left: 360 },
-          children: inlineRuns(line.trim()),
-        }),
-      );
-      continue;
-    }
-
-    // 普通段落（首行缩进 2 字符，符合中文公文习惯）
-    out.push(
+/** material:// 图片 → docx ImageRun 段落；解析失败时降级为文字占位 */
+function imageToDocx(alt: string, ref: string, resolver?: MaterialImageResolver): (Paragraph | Table)[] {
+  const resolved = resolveImageRef(ref, resolver);
+  if (!resolved) {
+    return [
       new Paragraph({
         spacing: { after: 80 },
-        indent: { firstLine: 480 },
-        children: inlineRuns(line.trim()),
+        children: [new TextRun({ text: `【图片：${alt || ref}（未找到，请在资料清单中确认）】`, italics: true })],
+      }),
+    ];
+  }
+  const size = readImageSize(resolved.buffer, resolved.mimeType) ?? { width: 540, height: 360 };
+  const scale = Math.min(1, DOCX_IMAGE_MAX_WIDTH / size.width);
+  const type = resolved.mimeType.includes('png') ? 'png' : 'jpg';
+  const out: (Paragraph | Table)[] = [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 80, after: alt ? 20 : 80 },
+      children: [
+        new ImageRun({
+          type,
+          data: resolved.buffer,
+          transformation: {
+            width: Math.round(size.width * scale),
+            height: Math.round(size.height * scale),
+          },
+        }),
+      ],
+    }),
+  ];
+  if (alt) {
+    out.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 80 },
+        children: [new TextRun({ text: alt, size: 18, color: '666666' })],
       }),
     );
+  }
+  return out;
+}
+
+/** 把一段 Markdown 正文转换为 docx 段落/表格数组 */
+function markdownToParagraphs(md: string, resolver?: MaterialImageResolver): (Paragraph | Table)[] {
+  const out: (Paragraph | Table)[] = [];
+
+  for (const block of parseMarkdownBlocks(md)) {
+    switch (block.type) {
+      // 小标题用加粗段落表示（不进入正式标题层级，避免打乱目录结构）
+      case 'heading':
+        out.push(
+          new Paragraph({
+            spacing: { before: 120, after: 60 },
+            children: [new TextRun({ text: block.text, bold: true })],
+          }),
+        );
+        break;
+      case 'bullet':
+        out.push(new Paragraph({ bullet: { level: 0 }, children: inlineRuns(block.text) }));
+        break;
+      case 'ordered':
+        out.push(
+          new Paragraph({
+            indent: { left: 360 },
+            children: inlineRuns(block.text),
+          }),
+        );
+        break;
+      case 'table':
+        out.push(tableToDocx(block));
+        // 表格后补空段落，避免紧贴下一段
+        out.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
+        break;
+      case 'image':
+        out.push(...imageToDocx(block.alt, block.ref, resolver));
+        break;
+      default:
+        // 普通段落（首行缩进 2 字符，符合中文公文习惯）
+        out.push(
+          new Paragraph({
+            spacing: { after: 80 },
+            indent: { firstLine: 480 },
+            children: inlineRuns(block.text),
+          }),
+        );
+    }
   }
 
   return out;
 }
 
 /** 递归渲染节点：标题 + （叶子）正文 */
-function renderNodes(nodes: OutlineNode[], depth: number): Paragraph[] {
-  const out: Paragraph[] = [];
+function renderNodes(nodes: OutlineNode[], depth: number, resolver?: MaterialImageResolver): (Paragraph | Table)[] {
+  const out: (Paragraph | Table)[] = [];
   const headingLevel = HEADING_BY_DEPTH[Math.min(depth, HEADING_BY_DEPTH.length - 1)];
 
   for (const n of nodes) {
@@ -148,9 +247,9 @@ function renderNodes(nodes: OutlineNode[], depth: number): Paragraph[] {
       }),
     );
     if (n.children.length > 0) {
-      out.push(...renderNodes(n.children, depth + 1));
+      out.push(...renderNodes(n.children, depth + 1, resolver));
     } else if (n.content && n.content.trim()) {
-      out.push(...markdownToParagraphs(n.content));
+      out.push(...markdownToParagraphs(n.content, resolver));
     }
   }
   return out;
@@ -182,7 +281,7 @@ export function buildMarkdown(outline: Outline): string {
   return `${chunks.filter((chunk) => chunk.trim()).join('\n\n')}\n`;
 }
 
-export async function buildDocx(outline: Outline): Promise<Buffer> {
+export async function buildDocx(outline: Outline, options: BuildDocxOptions = {}): Promise<Buffer> {
   const titlePara = new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: { after: 300 },
@@ -192,7 +291,7 @@ export async function buildDocx(outline: Outline): Promise<Buffer> {
   const doc = new Document({
     sections: [
       {
-        children: [titlePara, ...renderNodes(outline.nodes, 0)],
+        children: [titlePara, ...renderNodes(outline.nodes, 0, options.resolveImage)],
       },
     ],
   });
@@ -311,47 +410,158 @@ function drawWrappedParagraph(
   ctx.y -= after;
 }
 
-function markdownLinesToPdf(ctx: PdfContext, md: string): void {
-  const lines = md.replace(/\r\n/g, '\n').split('\n');
+const PDF_TABLE_FONT_SIZE = 9;
+const PDF_TABLE_CELL_PADDING = 4;
+const PDF_TABLE_BORDER = rgb(0.55, 0.6, 0.68);
 
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line.trim()) continue;
+/** 逐行绘制 Markdown 表格：等分列宽、单元格自动换行、跨页续排 */
+function drawPdfTable(ctx: PdfContext, block: TableBlock): void {
+  const columnCount = Math.max(block.headers.length, 1);
+  const contentWidth = A4.width - PDF_MARGIN.left - PDF_MARGIN.right;
+  const columnWidth = contentWidth / columnCount;
+  const innerWidth = columnWidth - PDF_TABLE_CELL_PADDING * 2;
+  const lineHeight = PDF_TABLE_FONT_SIZE * 1.4;
 
-    const heading = line.match(/^(#{1,6})\s+(.*)$/);
-    if (heading) {
-      drawWrappedParagraph(ctx, heading[2], {
-        font: ctx.fonts.bold,
-        size: 12,
-        before: 8,
-        after: 5,
+  const drawRow = (cells: string[], bold: boolean) => {
+    const font = bold ? ctx.fonts.bold : ctx.fonts.regular;
+    const wrapped = cells
+      .slice(0, columnCount)
+      .map((cell) => wrapText(cell || ' ', font, PDF_TABLE_FONT_SIZE, innerWidth, ctx.fonts));
+    while (wrapped.length < columnCount) wrapped.push([' ']);
+    const rowHeight =
+      Math.max(...wrapped.map((lines) => lines.length)) * lineHeight + PDF_TABLE_CELL_PADDING * 2;
+
+    ensureSpace(ctx, rowHeight);
+    const top = ctx.y;
+    const bottom = top - rowHeight;
+
+    // 边框
+    for (let c = 0; c <= columnCount; c++) {
+      const x = PDF_MARGIN.left + c * columnWidth;
+      ctx.page.drawLine({
+        start: { x, y: top },
+        end: { x, y: bottom },
+        thickness: 0.6,
+        color: PDF_TABLE_BORDER,
       });
-      continue;
+    }
+    for (const y of [top, bottom]) {
+      ctx.page.drawLine({
+        start: { x: PDF_MARGIN.left, y },
+        end: { x: PDF_MARGIN.left + contentWidth, y },
+        thickness: 0.6,
+        color: PDF_TABLE_BORDER,
+      });
     }
 
-    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
-    if (bullet) {
-      drawWrappedParagraph(ctx, `• ${bullet[1]}`, {
-        leftIndent: 18,
-        after: 5,
-      });
-      continue;
-    }
+    // 单元格文本
+    wrapped.forEach((lines, c) => {
+      const x = PDF_MARGIN.left + c * columnWidth + PDF_TABLE_CELL_PADDING;
+      let textY = top - PDF_TABLE_CELL_PADDING - PDF_TABLE_FONT_SIZE;
+      for (const line of lines) {
+        ctx.page.drawText(sanitizeForFont(line, ctx.fonts), {
+          x,
+          y: textY,
+          size: PDF_TABLE_FONT_SIZE,
+          font,
+          color: rgb(0.08, 0.13, 0.2),
+        });
+        textY -= lineHeight;
+      }
+    });
 
-    const ordered = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    if (ordered) {
-      drawWrappedParagraph(ctx, line.trim(), {
-        leftIndent: 18,
-        after: 5,
-      });
-      continue;
-    }
+    ctx.y = bottom;
+  };
 
-    drawWrappedParagraph(ctx, line.trim(), { firstLineIndent: 22 });
+  ctx.y -= 4;
+  drawRow(block.headers, true);
+  for (const row of block.rows) drawRow(row, false);
+  ctx.y -= 10;
+}
+
+/** material:// 图片嵌入 PDF；解析失败时降级为文字占位 */
+async function drawPdfImage(
+  ctx: PdfContext,
+  alt: string,
+  ref: string,
+  resolver?: MaterialImageResolver,
+): Promise<void> {
+  const resolved = resolveImageRef(ref, resolver);
+  if (!resolved) {
+    drawWrappedParagraph(ctx, `【图片：${alt || ref}（未找到，请在资料清单中确认）】`, {
+      color: rgb(0.45, 0.45, 0.5),
+      after: 6,
+    });
+    return;
+  }
+
+  const image = resolved.mimeType.includes('png')
+    ? await ctx.doc.embedPng(resolved.buffer)
+    : await ctx.doc.embedJpg(resolved.buffer);
+
+  const contentWidth = A4.width - PDF_MARGIN.left - PDF_MARGIN.right;
+  const maxHeight = A4.height - PDF_MARGIN.top - PDF_MARGIN.bottom - 30;
+  const scale = Math.min(contentWidth / image.width, maxHeight / image.height, 1);
+  const width = image.width * scale;
+  const height = image.height * scale;
+
+  ensureSpace(ctx, height + 12);
+  const x = PDF_MARGIN.left + (contentWidth - width) / 2;
+  ctx.page.drawImage(image, { x, y: ctx.y - height, width, height });
+  ctx.y -= height + 6;
+
+  if (alt) {
+    const captionSize = 9;
+    const captionWidth = textWidth(alt, ctx.fonts.regular, captionSize, ctx.fonts);
+    ensureSpace(ctx, captionSize * 1.6);
+    drawLine(ctx, alt, PDF_MARGIN.left + (contentWidth - captionWidth) / 2, captionSize, ctx.fonts.regular, rgb(0.4, 0.4, 0.45));
+    ctx.y -= captionSize * 1.9;
+  } else {
+    ctx.y -= 6;
   }
 }
 
-function renderPdfNodes(ctx: PdfContext, nodes: OutlineNode[], depth: number): void {
+async function markdownLinesToPdf(ctx: PdfContext, md: string, resolver?: MaterialImageResolver): Promise<void> {
+  for (const block of parseMarkdownBlocks(md)) {
+    switch (block.type) {
+      case 'heading':
+        drawWrappedParagraph(ctx, block.text, {
+          font: ctx.fonts.bold,
+          size: 12,
+          before: 8,
+          after: 5,
+        });
+        break;
+      case 'bullet':
+        drawWrappedParagraph(ctx, `• ${block.text}`, {
+          leftIndent: 18,
+          after: 5,
+        });
+        break;
+      case 'ordered':
+        drawWrappedParagraph(ctx, block.text, {
+          leftIndent: 18,
+          after: 5,
+        });
+        break;
+      case 'table':
+        drawPdfTable(ctx, block);
+        break;
+      case 'image':
+        await drawPdfImage(ctx, block.alt, block.ref, resolver);
+        break;
+      default:
+        drawWrappedParagraph(ctx, block.text, { firstLineIndent: 22 });
+    }
+  }
+}
+
+async function renderPdfNodes(
+  ctx: PdfContext,
+  nodes: OutlineNode[],
+  depth: number,
+  resolver?: MaterialImageResolver,
+): Promise<void> {
   for (const node of nodes) {
     const size = Math.max(12, 17 - depth * 1.5);
     drawWrappedParagraph(ctx, node.title, {
@@ -363,9 +573,9 @@ function renderPdfNodes(ctx: PdfContext, nodes: OutlineNode[], depth: number): v
     });
 
     if (node.children.length > 0) {
-      renderPdfNodes(ctx, node.children, depth + 1);
+      await renderPdfNodes(ctx, node.children, depth + 1, resolver);
     } else if (node.content?.trim()) {
-      markdownLinesToPdf(ctx, node.content);
+      await markdownLinesToPdf(ctx, node.content, resolver);
     }
   }
 }
@@ -428,7 +638,7 @@ export async function buildPdf(outline: Outline, options: BuildPdfOptions = {}):
   }
   ctx.y -= 18;
 
-  renderPdfNodes(ctx, outline.nodes, 0);
+  await renderPdfNodes(ctx, outline.nodes, 0, options.resolveImage);
 
   if (options.seal) {
     await drawSeal(doc, options.seal);

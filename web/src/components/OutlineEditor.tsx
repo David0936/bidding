@@ -1,6 +1,27 @@
-// 目录编辑器：递归渲染可编辑的章节树。支持改标题、加子节点、加同级、删除。
-import type { Outline, OutlineNode } from '../types';
+// 目录编辑器：递归渲染可编辑的章节树。支持改标题、加子节点、加同级、删除、分册标记。
+import type { BidVolume, Outline, OutlineNode } from '../types';
 import { IconCornerDownRight, IconTrash, IconPlus } from './Icons';
+
+const VOLUME_LABELS: Record<BidVolume, string> = {
+  technical: '技术标',
+  business: '商务标',
+  price: '价格标',
+  other: '其他',
+};
+
+const PRICE_KEYWORDS = ['报价', '价格', '开标一览', '分项报价', '单价', '费用清单', '投标函附录'];
+const BUSINESS_KEYWORDS = [
+  '资质', '资格', '营业执照', '业绩', '财务', '信誉', '证书', '授权', '保证金',
+  '商务', '资信', '法定代表人', '社保', '纳税', '声明', '承诺函', '投标函',
+  '偏离表', '联合体', '廉洁', '保密协议',
+];
+
+/** 与服务端 volumeUtils 一致的标题关键词自动归类（未显式标记时的默认值） */
+function classifyVolumeByTitle(title: string): BidVolume {
+  if (PRICE_KEYWORDS.some((k) => title.includes(k))) return 'price';
+  if (BUSINESS_KEYWORDS.some((k) => title.includes(k))) return 'business';
+  return 'technical';
+}
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -17,6 +38,10 @@ function updateTitle(nodes: OutlineNode[], id: string, title: string): OutlineNo
 
 function updateEstimatedWords(nodes: OutlineNode[], id: string, estimatedWords: number): OutlineNode[] {
   return mapTree(nodes, (n) => (n.id === id ? { ...n, estimatedWords } : n));
+}
+
+function updateVolume(nodes: OutlineNode[], id: string, volume: BidVolume | undefined): OutlineNode[] {
+  return mapTree(nodes, (n) => (n.id === id ? { ...n, volume } : n));
 }
 
 function removeNode(nodes: OutlineNode[], id: string): OutlineNode[] {
@@ -47,6 +72,7 @@ function NodeRow({
   onAddChild,
   onRemove,
   onEstimatedWords,
+  onVolume,
 }: {
   node: OutlineNode;
   depth: number;
@@ -54,8 +80,10 @@ function NodeRow({
   onAddChild: (id: string) => void;
   onRemove: (id: string) => void;
   onEstimatedWords: (id: string, words: number) => void;
+  onVolume: (id: string, volume: BidVolume | undefined) => void;
 }) {
   const isLeaf = node.children.length === 0;
+  const autoVolume = classifyVolumeByTitle(node.title);
   return (
     <div className="outline-node" style={{ marginLeft: depth * 24 }}>
       <div className="outline-row">
@@ -65,6 +93,20 @@ function NodeRow({
           value={node.title}
           onChange={(e) => onTitle(node.id, e.target.value)}
         />
+        {depth === 0 && (
+          <label className="outline-volume" title="分册归属：导出时可按技术标/商务标/价格标拆分">
+            <select
+              value={node.volume ?? ''}
+              onChange={(e) => onVolume(node.id, (e.target.value || undefined) as BidVolume | undefined)}
+            >
+              <option value="">自动（{VOLUME_LABELS[autoVolume]}）</option>
+              <option value="technical">技术标</option>
+              <option value="business">商务标</option>
+              <option value="price">价格标</option>
+              <option value="other">其他</option>
+            </select>
+          </label>
+        )}
         {isLeaf && (
           <label className="outline-words">
             <span>预计字数</span>
@@ -108,6 +150,7 @@ function NodeRow({
           onAddChild={onAddChild}
           onRemove={onRemove}
           onEstimatedWords={onEstimatedWords}
+          onVolume={onVolume}
         />
       ))}
     </div>
@@ -150,6 +193,7 @@ export default function OutlineEditor({
             onAddChild={(id) => setNodes(addChild(outline.nodes, id))}
             onRemove={(id) => setNodes(removeNode(outline.nodes, id))}
             onEstimatedWords={(id, words) => setNodes(updateEstimatedWords(outline.nodes, id, words))}
+            onVolume={(id, volume) => setNodes(updateVolume(outline.nodes, id, volume))}
           />
         ))}
       </div>

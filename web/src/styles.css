@@ -3560,3 +3560,173 @@ p {
     min-height: 38px;
   }
 }
+
+/* ===== 富文本编辑器工具栏与预览 ===== */
+.section-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.editor-toolbar-spacer {
+  flex: 1;
+}
+
+.mini-btn-active {
+  background: rgba(79, 105, 255, 0.14);
+  border-color: rgba(79, 105, 255, 0.5);
+  color: #3d56e0;
+}
+
+.content-preview {
+  border: 1px solid rgba(96, 116, 168, 0.28);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: #fff;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.md-preview {
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: #1f2940;
+}
+
+.md-preview p {
+  margin: 0 0 8px;
+  text-indent: 2em;
+}
+
+.md-preview h4 {
+  margin: 12px 0 6px;
+  font-size: 14px;
+}
+
+.md-preview li {
+  margin-left: 20px;
+}
+
+.md-preview .md-ordered {
+  margin-left: 20px;
+}
+
+.md-preview-empty {
+  color: #8a94ad;
+}
+
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 12.5px;
+}
+
+.md-table th,
+.md-table td {
+  border: 1px solid rgba(96, 116, 168, 0.35);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-table th {
+  background: rgba(79, 105, 255, 0.08);
+  font-weight: 600;
+}
+
+.md-image {
+  margin: 12px auto;
+  text-align: center;
+}
+
+.md-image img {
+  max-width: 100%;
+  max-height: 420px;
+  border: 1px solid rgba(96, 116, 168, 0.25);
+  border-radius: 8px;
+}
+
+.md-image figcaption {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7590;
+}
+
+.md-image-missing,
+.md-image-loading {
+  padding: 10px 12px;
+  border: 1px dashed rgba(96, 116, 168, 0.4);
+  border-radius: 8px;
+  color: #8a94ad;
+  font-size: 12.5px;
+  margin: 8px 0;
+}
+
+/* ===== 资料清单：扫描增强与插入章节 ===== */
+.material-scan-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: #4a5670;
+  margin: 10px 0 2px;
+  cursor: pointer;
+}
+
+.material-insert-select {
+  max-width: 190px;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(96, 116, 168, 0.35);
+  background: #fff;
+  color: #3d56e0;
+  cursor: pointer;
+}
+
+/* ===== 目录分册标记 ===== */
+.outline-volume select {
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(96, 116, 168, 0.35);
+  background: #fff;
+  color: #4a5670;
+  cursor: pointer;
+}
+
+/* ===== 导出分册选择 ===== */
+.export-volume-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.export-volume-bar label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #33405e;
+  font-weight: 600;
+}
+
+.export-volume-bar select {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(96, 116, 168, 0.35);
+  background: #fff;
+  color: #1f2940;
+  cursor: pointer;
+}

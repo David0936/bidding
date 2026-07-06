@@ -32,6 +32,8 @@ import {
   getMaterialChecklist,
   saveMaterialFile,
   deleteMaterialFile,
+  getMaterialFileBinary,
+  getMaterialFileText,
   renderProjectMaterialsForPrompt,
   saveConsistencyAudit,
   getConsistencyAudit,
@@ -44,6 +46,9 @@ import {
   getSealPlacements,
 } from '../projects/projectStore.js';
 import { parseDocument, detectFileType } from '../projects/docParser.js';
+import { parseMaterialFile, materialMimeType } from '../projects/materialParser.js';
+import { filterOutlineByVolume, isBidVolume, VOLUME_LABELS } from '../projects/export/volumeUtils.js';
+import { PDFDocument } from 'pdf-lib';
 import { detectBidSections } from '../projects/bidSections.js';
 import { generateOutline, generateOutlineVariants } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
@@ -56,7 +61,7 @@ import { auditConsistency } from '../projects/audit/consistencyAuditService.js';
 import { buildBidReadinessReport } from '../projects/readiness/readinessService.js';
 import { listKnowledgeItems } from '../knowledge/knowledgeStore.js';
 import { findNode, setNodeContent } from '../projects/outline/treeUtils.js';
-import { buildDocx, buildMarkdown, buildPdf } from '../projects/export/exportService.js';
+import { buildDocx, buildMarkdown, buildPdf, type MaterialImageResolver } from '../projects/export/exportService.js';
 import {
   buildBidReadinessCsv,
   buildBidReadinessMarkdown,
@@ -127,6 +132,31 @@ function normalizePlacement(input: unknown): SealPlacement | null {
     opacity: Math.min(Math.max(Number(raw.opacity ?? 1), 0.1), 1),
     rotation: Number.isFinite(Number(raw.rotation)) ? Number(raw.rotation) : 0,
   };
+}
+
+/** 构造 material:// 图片解析器：导出时把资料库中的证照/照片嵌入文档 */
+function materialImageResolver(projectId: string): MaterialImageResolver {
+  return ({ itemId, fileId }) => {
+    const found = getMaterialFileBinary(projectId, itemId, fileId);
+    if (!found) return null;
+    if (found.file.fileType !== 'png' && found.file.fileType !== 'jpg') return null;
+    return { buffer: found.buffer, mimeType: materialMimeType(found.file.fileType) };
+  };
+}
+
+/** 按 ?volume= 查询参数裁剪导出目录；返回裁剪结果与文件名后缀 */
+function resolveExportOutline(
+  req: Request,
+  outline: Outline,
+): { outline: Outline; suffix: string } | { error: string } {
+  const raw = String(req.query.volume ?? '').trim();
+  if (!raw) return { outline, suffix: '' };
+  if (!isBidVolume(raw)) return { error: '分册参数不正确，支持 technical/business/price/other' };
+  const filtered = filterOutlineByVolume(outline, raw);
+  if (filtered.nodes.length === 0) {
+    return { error: `没有章节归属于「${VOLUME_LABELS[raw]}」，请先在目录中标记分册` };
+  }
+  return { outline: filtered, suffix: `-${VOLUME_LABELS[raw]}` };
 }
 
 function sendDownload(res: Response, buffer: Buffer, contentType: string, fileName: string): void {
@@ -630,7 +660,7 @@ projectsRouter.post('/:id/material-checklist/:itemId/files', upload.single('file
   if (!item) return res.status(404).json({ message: '资料项不存在' });
 
   try {
-    const parsed = await parseDocument(req.file.buffer, req.file.originalname);
+    const parsed = await parseMaterialFile(req.file.buffer, req.file.originalname);
     if (!item.acceptedFileTypes.includes(parsed.fileType)) {
       return res.status(400).json({ message: '该资料项暂不接受此文件格式。' });
     }
@@ -650,6 +680,53 @@ projectsRouter.post('/:id/material-checklist/:itemId/files', upload.single('file
   } catch (err) {
     res.status(errorStatus(err)).json({ message: errorMessage(err, '资料解析或保存失败') });
   }
+});
+
+// 读取资料文件原始二进制（图片预览、证照插入正文后的编辑器预览）
+projectsRouter.get('/:id/material-checklist/:itemId/files/:fileId/raw', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const found = getMaterialFileBinary(req.params.id, req.params.itemId, req.params.fileId);
+  if (!found) return res.status(404).json({ message: '资料文件不存在' });
+  res.setHeader('Content-Type', materialMimeType(found.file.fileType));
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(found.buffer);
+});
+
+// 把资料文件插入到指定章节正文：图片以 material:// 引用插入；表格/文本以 Markdown 追加
+projectsRouter.post('/:id/material-checklist/:itemId/files/:fileId/insert', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const nodeId = String(req.body?.nodeId ?? '').trim();
+  if (!nodeId) return res.status(400).json({ message: '请指定要插入的章节' });
+  const outline = getOutline(req.params.id);
+  if (!outline) return res.status(400).json({ message: '请先生成目录' });
+  const target = findNode(outline.nodes, nodeId);
+  if (!target) return res.status(404).json({ message: '章节不存在' });
+  if (target.node.children.length > 0) {
+    return res.status(400).json({ message: '只能插入到叶子章节（无子章节的章节）' });
+  }
+  const found = getMaterialFileBinary(req.params.id, req.params.itemId, req.params.fileId);
+  if (!found) return res.status(404).json({ message: '资料文件不存在' });
+
+  let snippet: string;
+  if (found.file.fileType === 'png' || found.file.fileType === 'jpg') {
+    snippet = `![${found.itemTitle}](material://${req.params.itemId}/${req.params.fileId})`;
+  } else {
+    const text = getMaterialFileText(req.params.id, req.params.itemId, req.params.fileId);
+    if (!text?.trim()) return res.status(400).json({ message: '该资料文件没有可插入的文本内容' });
+    snippet = text.trim();
+  }
+
+  const current = (target.node.content ?? '').trimEnd();
+  const nextContent = current ? `${current}\n\n${snippet}\n` : `${snippet}\n`;
+  const updated: Outline = {
+    ...outline,
+    nodes: setNodeContent(outline.nodes, nodeId, nextContent),
+    updatedAt: new Date().toISOString(),
+  };
+  saveOutline(req.params.id, updated, { clearResponseMatrix: false });
+  res.json(updated);
 });
 
 // 删除某个资料项下的上传文件
@@ -769,10 +846,13 @@ projectsRouter.get('/:id/export/docx', async (req, res) => {
   const outline = getOutline(req.params.id);
   if (!outline) return res.status(400).json({ message: '请先生成目录' });
 
+  const resolved = resolveExportOutline(req, outline);
+  if ('error' in resolved) return res.status(400).json({ message: resolved.error });
+
   try {
-    const buffer = await buildDocx(outline);
+    const buffer = await buildDocx(resolved.outline, { resolveImage: materialImageResolver(req.params.id) });
     const baseName = safeExportBaseName(project.name || '投标技术方案');
-    const fileName = `${baseName}.docx`;
+    const fileName = `${baseName}${resolved.suffix}.docx`;
     sendDownload(
       res,
       buffer,
@@ -792,9 +872,12 @@ projectsRouter.get('/:id/export/markdown', (req, res) => {
   const outline = getOutline(req.params.id);
   if (!outline) return res.status(400).json({ message: '请先生成目录' });
 
+  const resolved = resolveExportOutline(req, outline);
+  if ('error' in resolved) return res.status(400).json({ message: resolved.error });
+
   try {
-    const buffer = Buffer.from(buildMarkdown(outline), 'utf-8');
-    const fileName = `${safeExportBaseName(project.name || '投标技术方案')}.md`;
+    const buffer = Buffer.from(buildMarkdown(resolved.outline), 'utf-8');
+    const fileName = `${safeExportBaseName(project.name || '投标技术方案')}${resolved.suffix}.md`;
     sendDownload(res, buffer, 'text/markdown; charset=utf-8', fileName);
   } catch (err) {
     res.status(errorStatus(err, 500)).json({ message: errorMessage(err, 'Markdown 导出失败') });
@@ -937,9 +1020,12 @@ projectsRouter.get('/:id/export/pdf', async (req, res) => {
   const outline = getOutline(req.params.id);
   if (!outline) return res.status(400).json({ message: '请先生成目录' });
 
+  const resolved = resolveExportOutline(req, outline);
+  if ('error' in resolved) return res.status(400).json({ message: resolved.error });
+
   try {
-    const buffer = await buildPdf(outline);
-    const fileName = `${safeExportBaseName(project.name || '投标技术方案')}.pdf`;
+    const buffer = await buildPdf(resolved.outline, { resolveImage: materialImageResolver(req.params.id) });
+    const fileName = `${safeExportBaseName(project.name || '投标技术方案')}${resolved.suffix}.pdf`;
     sendDownload(res, buffer, 'application/pdf', fileName);
   } catch (err) {
     res.status(errorStatus(err, 500)).json({ message: errorMessage(err, 'PDF 导出失败') });
@@ -1034,10 +1120,37 @@ projectsRouter.get('/:id/export/stamped-pdf', async (req, res) => {
         mimeType: project.seal.mimeType,
         placements,
       },
+      resolveImage: materialImageResolver(req.params.id),
     });
     const fileName = `${safeExportBaseName(project.name || '投标技术方案')}-盖章版.pdf`;
     sendDownload(res, buffer, 'application/pdf', fileName);
   } catch (err) {
     res.status(errorStatus(err, 500)).json({ message: errorMessage(err, '盖章 PDF 导出失败') });
+  }
+});
+
+// 合并多份 PDF（如技术标 + 商务标 + 盖章附件合并为一册），按上传顺序拼接
+projectsRouter.post('/:id/tools/merge-pdf', upload.array('files', 20), async (req, res) => {
+  if (!requireFeature(req, res, 'export')) return;
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const files = (req.files ?? []) as Express.Multer.File[];
+  if (files.length < 2) return res.status(400).json({ message: '请至少上传两份 PDF 文件' });
+
+  try {
+    const merged = await PDFDocument.create();
+    for (const file of files) {
+      if (!file.originalname.toLowerCase().endsWith('.pdf')) {
+        return res.status(400).json({ message: `「${file.originalname}」不是 PDF 文件` });
+      }
+      const doc = await PDFDocument.load(file.buffer, { ignoreEncryption: true });
+      const pages = await merged.copyPages(doc, doc.getPageIndices());
+      for (const page of pages) merged.addPage(page);
+    }
+    const buffer = Buffer.from(await merged.save());
+    const fileName = `${safeExportBaseName(project.name || '投标文件')}-合并.pdf`;
+    sendDownload(res, buffer, 'application/pdf', fileName);
+  } catch (err) {
+    res.status(errorStatus(err, 500)).json({ message: errorMessage(err, 'PDF 合并失败，请确认文件未加密') });
   }
 });

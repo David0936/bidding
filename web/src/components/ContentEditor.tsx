@@ -1,9 +1,93 @@
 // 正文编辑器：按目录叶子逐节生成正文，支持一键全生成、单节重生成、手动编辑、保存。
-import { useMemo, useState } from 'react';
+// 编辑区带格式工具栏（加粗/小标题/列表/表格）与「预览」模式，预览渲染表格与证照图片。
+import { useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import type { Outline } from '../types';
 import { collectLeaves, setNodeContent, countGenerated } from '../lib/outlineTree';
 import { IconPen, IconSave, IconCheckCircle, IconAlertTriangle } from './Icons';
+import MarkdownPreview from './MarkdownPreview';
+
+const TABLE_TEMPLATE = [
+  '| 项目 | 内容 | 备注 |',
+  '| --- | --- | --- |',
+  '|  |  |  |',
+  '|  |  |  |',
+].join('\n');
+
+function SectionEditor({
+  projectId,
+  content,
+  onChange,
+}: {
+  projectId: string;
+  content: string;
+  onChange: (value: string) => void;
+}) {
+  const [preview, setPreview] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /** 在光标处插入文本；wrap 模式把选中文本包裹在 before/after 之间 */
+  function insertAtCursor(before: string, after = '', block = false) {
+    const el = textareaRef.current;
+    if (!el) {
+      onChange(content + (block ? `\n\n${before}\n` : before));
+      return;
+    }
+    const start = el.selectionStart ?? content.length;
+    const end = el.selectionEnd ?? content.length;
+    const selected = content.slice(start, end);
+    let inserted: string;
+    if (block) {
+      const prefix = content.slice(0, start).trimEnd();
+      inserted = `${prefix ? `${prefix}\n\n` : ''}${before}\n${content.slice(end).trimStart()}`;
+      onChange(inserted);
+      return;
+    }
+    inserted = `${content.slice(0, start)}${before}${selected}${after}${content.slice(end)}`;
+    onChange(inserted);
+    requestAnimationFrame(() => {
+      el.focus();
+      const cursor = start + before.length + selected.length + after.length;
+      el.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  return (
+    <div className="section-editor">
+      <div className="editor-toolbar">
+        <button className="mini-btn" title="加粗" onClick={() => insertAtCursor('**', '**')} disabled={preview}>
+          <b>B</b>
+        </button>
+        <button className="mini-btn" title="小标题" onClick={() => insertAtCursor('\n### ', '')} disabled={preview}>
+          H
+        </button>
+        <button className="mini-btn" title="无序列表" onClick={() => insertAtCursor('\n- ', '')} disabled={preview}>
+          • 列表
+        </button>
+        <button className="mini-btn" title="插入表格" onClick={() => insertAtCursor(TABLE_TEMPLATE, '', true)} disabled={preview}>
+          表格
+        </button>
+        <span className="editor-toolbar-spacer" />
+        <button className={`mini-btn ${preview ? 'mini-btn-active' : ''}`} onClick={() => setPreview((v) => !v)}>
+          {preview ? '返回编辑' : '预览'}
+        </button>
+      </div>
+      {preview ? (
+        <div className="content-preview">
+          <MarkdownPreview projectId={projectId} markdown={content} />
+        </div>
+      ) : (
+        <textarea
+          ref={textareaRef}
+          className="content-textarea"
+          value={content}
+          placeholder="（尚未生成正文，可点击「生成本节」或一键生成；支持 Markdown 表格与资料图片引用）"
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function ContentEditor({
   projectId,
@@ -122,14 +206,13 @@ export default function ContentEditor({
                   {busyNode === leaf.node.id ? '生成中…' : filled ? '重新生成' : '生成本节'}
                 </button>
               </div>
-              <textarea
-                className="content-textarea"
-                value={content}
-                placeholder="（尚未生成正文，可点击「生成本节」或一键生成）"
-                onChange={(e) =>
+              <SectionEditor
+                projectId={projectId}
+                content={content}
+                onChange={(value) =>
                   onChange({
                     ...outline,
-                    nodes: setNodeContent(outline.nodes, leaf.node.id, e.target.value),
+                    nodes: setNodeContent(outline.nodes, leaf.node.id, value),
                   })
                 }
               />

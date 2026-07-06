@@ -291,6 +291,10 @@ export interface AgentAdminOverview {
 
 // ===== 标书项目 =====
 export type TenderFileType = 'pdf' | 'docx' | 'txt' | 'md';
+/** 客户补充资料支持的文件类型：文档 + 证照图片 + 表格 */
+export type MaterialFileType = TenderFileType | 'png' | 'jpg' | 'xlsx' | 'csv';
+/** 分册类型：技术标 / 商务标 / 价格标 / 其他 */
+export type BidVolume = 'technical' | 'business' | 'price' | 'other';
 export type BidSectionMode = 'single' | 'multiple';
 
 export interface TenderDoc {
@@ -362,6 +366,8 @@ export interface OutlineNode {
   children: OutlineNode[];
   content?: string;
   estimatedWords?: number;
+  /** 分册归属；未标记时按标题关键词自动判定 */
+  volume?: BidVolume;
 }
 
 export interface Outline {
@@ -552,7 +558,7 @@ export type MaterialItemStatus = 'pending' | 'uploaded' | 'needs_review' | 'not_
 export interface ProjectMaterialFile {
   id: string;
   fileName: string;
-  fileType: TenderFileType;
+  fileType: MaterialFileType;
   charCount: number;
   uploadedAt: string;
 }
@@ -568,7 +574,7 @@ export interface ProjectMaterialItem {
   purpose: string;
   sourceClause?: string;
   suggestedSection?: string;
-  acceptedFileTypes: TenderFileType[];
+  acceptedFileTypes: MaterialFileType[];
   uploadTips?: string;
   files: ProjectMaterialFile[];
 }

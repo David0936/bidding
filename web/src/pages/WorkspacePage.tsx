@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { api } from '../api';
 import type {
   BidReadinessReport,
+  BidVolume,
   ConsistencyAudit,
   DeviationTable,
   DeviationTableItem,
@@ -21,7 +22,8 @@ import type {
 } from '../types';
 import OutlineEditor from '../components/OutlineEditor';
 import ContentEditor from '../components/ContentEditor';
-import { countGenerated } from '../lib/outlineTree';
+import { collectLeaves, countGenerated } from '../lib/outlineTree';
+import { enhanceScan } from '../lib/scanImage';
 import {
   IconPlus,
   IconTrash,
@@ -760,14 +762,24 @@ function MaterialChecklistPanel({
   checklist,
   uploadingItemId,
   deletingFileId,
+  insertingFileId,
+  scanEnhance,
+  onScanEnhanceChange,
+  leaves,
   onPickFile,
   onDeleteFile,
+  onInsertFile,
 }: {
   checklist: ProjectMaterialChecklist;
   uploadingItemId: string;
   deletingFileId: string;
+  insertingFileId: string;
+  scanEnhance: boolean;
+  onScanEnhanceChange: (value: boolean) => void;
+  leaves: { id: string; label: string }[];
   onPickFile: (item: ProjectMaterialItem) => void;
   onDeleteFile: (itemId: string, fileId: string) => void;
+  onInsertFile: (itemId: string, fileId: string, nodeId: string) => void;
 }) {
   const requiredItems = checklist.items.filter((item) => item.required);
   const uploadedRequired = requiredItems.filter((item) => item.files.length > 0 || item.status === 'uploaded');
@@ -779,6 +791,14 @@ function MaterialChecklistPanel({
         <strong>资料准备摘要</strong>
         <p>{checklist.summary}</p>
       </div>
+      <label className="material-scan-toggle" title="上传营业执照、证书等照片时自动做黑白提亮处理，接近扫描件效果">
+        <input
+          type="checkbox"
+          checked={scanEnhance}
+          onChange={(e) => onScanEnhanceChange(e.target.checked)}
+        />
+        上传照片自动扫描增强（推荐：手机拍摄的证照更清晰）
+      </label>
       <div className="response-matrix-metrics">
         <div className="metric-card">
           <span>资料项</span>
@@ -830,19 +850,50 @@ function MaterialChecklistPanel({
               {item.files.length === 0 ? (
                 <span className="muted">尚未上传</span>
               ) : (
-                item.files.map((file) => (
-                  <span className="material-file-chip" key={file.id}>
-                    <IconCheckCircle />
-                    {file.fileName} · {file.fileType.toUpperCase()} · {file.charCount.toLocaleString()} 字
-                    <button
-                      className="link-btn"
-                      onClick={() => onDeleteFile(item.id, file.id)}
-                      disabled={deletingFileId === file.id}
-                    >
-                      删除
-                    </button>
-                  </span>
-                ))
+                item.files.map((file) => {
+                  const isImage = file.fileType === 'png' || file.fileType === 'jpg';
+                  const isTable = file.fileType === 'xlsx' || file.fileType === 'csv';
+                  return (
+                    <span className="material-file-chip" key={file.id}>
+                      <IconCheckCircle />
+                      {file.fileName} · {file.fileType.toUpperCase()}
+                      {!isImage && ` · ${file.charCount.toLocaleString()} 字`}
+                      {leaves.length > 0 && (
+                        <select
+                          className="material-insert-select"
+                          value=""
+                          disabled={insertingFileId === file.id}
+                          title={
+                            isImage
+                              ? '把这张证照/照片插入正文对应章节，导出 Word/PDF 时自动嵌入图片'
+                              : isTable
+                                ? '把整理好的表格插入正文对应章节，导出时渲染为 Word/PDF 表格'
+                                : '把该资料解析文本追加到正文对应章节'
+                          }
+                          onChange={(e) => {
+                            if (e.target.value) onInsertFile(item.id, file.id, e.target.value);
+                          }}
+                        >
+                          <option value="">
+                            {insertingFileId === file.id ? '插入中…' : isImage ? '插入图片到章节…' : isTable ? '插入表格到章节…' : '插入文本到章节…'}
+                          </option>
+                          {leaves.map((leaf) => (
+                            <option key={leaf.id} value={leaf.id}>
+                              {leaf.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <button
+                        className="link-btn"
+                        onClick={() => onDeleteFile(item.id, file.id)}
+                        disabled={deletingFileId === file.id}
+                      >
+                        删除
+                      </button>
+                    </span>
+                  );
+                })
               )}
             </div>
           </div>
@@ -911,6 +962,11 @@ export default function WorkspacePage({
   // 客户资料补齐
   const [materialChecklist, setMaterialChecklist] = useState<ProjectMaterialChecklist | null>(null);
   const [materialLoading, setMaterialLoading] = useState(false);
+  const [scanEnhanceEnabled, setScanEnhanceEnabled] = useState(true);
+  const [insertingMaterialFileId, setInsertingMaterialFileId] = useState('');
+  const [exportVolume, setExportVolume] = useState<'' | BidVolume>('');
+  const [mergingPdf, setMergingPdf] = useState(false);
+  const mergePdfRef = useRef<HTMLInputElement>(null);
   const [uploadingMaterialItemId, setUploadingMaterialItemId] = useState('');
   const [deletingMaterialFileId, setDeletingMaterialFileId] = useState('');
 
@@ -1384,7 +1440,16 @@ export default function WorkspacePage({
     setUploadingMaterialItemId(materialTargetItemId);
     setError('');
     try {
-      const checklist = await api.uploadMaterialFile(current.id, materialTargetItemId, file);
+      let payload = file;
+      // 照片类资料先做扫描增强（灰度 + 对比度拉伸），失败时回退原图
+      if (scanEnhanceEnabled && /\.(png|jpe?g)$/i.test(file.name)) {
+        try {
+          payload = await enhanceScan(file);
+        } catch {
+          payload = file;
+        }
+      }
+      const checklist = await api.uploadMaterialFile(current.id, materialTargetItemId, payload);
       setMaterialChecklist(checklist);
       setAudit(null);
       invalidateReadiness();
@@ -1394,6 +1459,40 @@ export default function WorkspacePage({
       setUploadingMaterialItemId('');
       setMaterialTargetItemId('');
       if (materialFileRef.current) materialFileRef.current.value = '';
+    }
+  }
+
+  async function handleInsertMaterialFile(itemId: string, fileId: string, nodeId: string) {
+    if (!current) return;
+    setInsertingMaterialFileId(fileId);
+    setError('');
+    try {
+      // 有未保存的目录改动时先落盘，避免插入结果覆盖本地编辑
+      if (outline && outlineDirty) {
+        await api.saveOutline(current.id, outline, { clearResponseMatrix: false });
+      }
+      const updated = await api.insertMaterialFile(current.id, itemId, fileId, nodeId);
+      setOutline(updated);
+      setOutlineDirty(false);
+      invalidateReadiness();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInsertingMaterialFileId('');
+    }
+  }
+
+  async function handleMergePdf(files: File[]) {
+    if (!current) return;
+    setMergingPdf(true);
+    setError('');
+    try {
+      await api.mergePdf(current.id, files, current.name || '投标文件');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMergingPdf(false);
+      if (mergePdfRef.current) mergePdfRef.current.value = '';
     }
   }
 
@@ -1443,7 +1542,7 @@ export default function WorkspacePage({
     setError('');
     try {
       await persistOutlineBeforeExport();
-      await api.downloadDocx(current.id, current.name || '投标技术方案');
+      await api.downloadDocx(current.id, current.name || '投标技术方案', exportVolume || undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1457,7 +1556,7 @@ export default function WorkspacePage({
     setError('');
     try {
       await persistOutlineBeforeExport();
-      await api.downloadMarkdown(current.id, current.name || '投标技术方案');
+      await api.downloadMarkdown(current.id, current.name || '投标技术方案', exportVolume || undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1471,7 +1570,7 @@ export default function WorkspacePage({
     setError('');
     try {
       await persistOutlineBeforeExport();
-      await api.downloadPdf(current.id, current.name || '投标技术方案');
+      await api.downloadPdf(current.id, current.name || '投标技术方案', exportVolume || undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1934,11 +2033,24 @@ export default function WorkspacePage({
       <input
         ref={materialFileRef}
         type="file"
-        accept=".pdf,.docx,.txt,.md"
+        accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.xlsx,.xlsm,.csv"
         style={{ display: 'none' }}
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) handleMaterialFile(f);
+        }}
+      />
+
+      <input
+        ref={mergePdfRef}
+        type="file"
+        accept=".pdf"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (files.length >= 2) handleMergePdf(files);
+          else if (files.length === 1) setError('合并 PDF 需要一次选择至少两份文件（按住 Cmd/Ctrl 多选）');
         }}
       />
 
@@ -2584,8 +2696,20 @@ export default function WorkspacePage({
                 checklist={materialChecklist}
                 uploadingItemId={uploadingMaterialItemId}
                 deletingFileId={deletingMaterialFileId}
+                insertingFileId={insertingMaterialFileId}
+                scanEnhance={scanEnhanceEnabled}
+                onScanEnhanceChange={setScanEnhanceEnabled}
+                leaves={
+                  outline
+                    ? collectLeaves(outline.nodes).map((leaf) => ({
+                        id: leaf.node.id,
+                        label: leaf.path.join(' / '),
+                      }))
+                    : []
+                }
                 onPickFile={handlePickMaterialFile}
                 onDeleteFile={handleDeleteMaterialFile}
+                onInsertFile={handleInsertMaterialFile}
               />
             )}
           </>
@@ -2745,6 +2869,21 @@ export default function WorkspacePage({
                 <span>当前总检为“暂不建议提交”，仍可导出工作稿，但建议先处理阻断问题。</span>
               </div>
             )}
+            <div className="export-volume-bar">
+              <label>
+                导出范围
+                <select value={exportVolume} onChange={(e) => setExportVolume(e.target.value as '' | BidVolume)}>
+                  <option value="">全套投标文件</option>
+                  <option value="technical">仅技术标</option>
+                  <option value="business">仅商务标</option>
+                  <option value="price">仅价格标</option>
+                  <option value="other">仅其他章节</option>
+                </select>
+              </label>
+              <span className="muted" style={{ fontSize: 12 }}>
+                分册归属在「目录」步骤中标记，未标记章节按标题自动归类。
+              </span>
+            </div>
             <div className="export-grid">
               <div className="export-option">
                 <strong>Markdown 工作稿</strong>
@@ -2768,6 +2907,18 @@ export default function WorkspacePage({
                 <button className="btn btn-ghost" onClick={handleExportPdf} disabled={!!exporting}>
                   <IconDownload />
                   {exporting === 'pdf' ? '导出中…' : '导出 PDF'}
+                </button>
+              </div>
+              <div className="export-option">
+                <strong>合并 PDF</strong>
+                <span>把技术标、商务标、盖章附件等多份 PDF 按顺序合并为一册。</span>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => mergePdfRef.current?.click()}
+                  disabled={mergingPdf}
+                >
+                  <IconUploadCloud />
+                  {mergingPdf ? '合并中…' : '选择 PDF 合并'}
                 </button>
               </div>
             </div>

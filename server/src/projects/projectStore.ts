@@ -649,6 +649,44 @@ export function getMaterialChecklist(id: string): ProjectMaterialChecklist | nul
   }
 }
 
+export interface MaterialFileBinary {
+  file: ProjectMaterialFile;
+  itemTitle: string;
+  buffer: Buffer;
+}
+
+/** 读取某个资料文件的原始二进制（用于图片预览与导出嵌入） */
+export function getMaterialFileBinary(projectId: string, itemId: string, fileId: string): MaterialFileBinary | null {
+  const checklist = getMaterialChecklist(projectId);
+  if (!checklist) return null;
+  const item = checklist.items.find((entry) => entry.id === itemId);
+  if (!item) return null;
+  const file = item.files.find((entry) => entry.id === fileId);
+  if (!file?.originalPath) return null;
+  try {
+    return {
+      file,
+      itemTitle: item.title,
+      buffer: fs.readFileSync(path.join(projectDir(projectId), file.originalPath)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 读取某个资料文件解析出的文本（表格类资料为 Markdown 表格） */
+export function getMaterialFileText(projectId: string, itemId: string, fileId: string): string | null {
+  const checklist = getMaterialChecklist(projectId);
+  if (!checklist) return null;
+  const file = checklist.items.find((entry) => entry.id === itemId)?.files.find((entry) => entry.id === fileId);
+  if (!file?.textPath) return null;
+  try {
+    return fs.readFileSync(path.join(projectDir(projectId), file.textPath), 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
 export function saveMaterialFile(
   projectId: string,
   itemId: string,

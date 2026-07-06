@@ -22,6 +22,7 @@ import type {
   GlobalFacts,
   KnowledgeOverview,
   KnowledgeUploadResult,
+  BidVolume,
   Outline,
   OutlineVariantsResult,
   Project,
@@ -490,6 +491,19 @@ export const api = {
       method: 'DELETE',
     });
   },
+  /** 读取资料文件原始二进制（图片预览用），返回 Blob */
+  async getMaterialFileBlob(id: string, itemId: string, fileId: string): Promise<Blob> {
+    const resp = await authFetch(`/api/projects/${id}/material-checklist/${itemId}/files/${fileId}/raw`);
+    await throwIfNotOk(resp);
+    return resp.blob();
+  },
+  /** 把资料文件（证照图片/财务表格/文本）插入到指定章节正文，返回更新后的目录 */
+  insertMaterialFile(id: string, itemId: string, fileId: string, nodeId: string): Promise<Outline> {
+    return jsonFetch<Outline>(`/api/projects/${id}/material-checklist/${itemId}/files/${fileId}/insert`, {
+      method: 'POST',
+      body: JSON.stringify({ nodeId }),
+    });
+  },
 
   // ===== 全文一致性审计 =====
   getConsistencyAudit(id: string): Promise<ConsistencyAudit> {
@@ -523,17 +537,30 @@ export const api = {
   },
 
   // ===== 导出 =====
-  async downloadDocx(id: string, fallbackName: string): Promise<void> {
-    const resp = await authFetch(`/api/projects/${id}/export/docx`);
+  async downloadDocx(id: string, fallbackName: string, volume?: BidVolume): Promise<void> {
+    const query = volume ? `?volume=${volume}` : '';
+    const resp = await authFetch(`/api/projects/${id}/export/docx${query}`);
     await downloadFromResponse(resp, `${fallbackName}.docx`);
   },
-  async downloadMarkdown(id: string, fallbackName: string): Promise<void> {
-    const resp = await authFetch(`/api/projects/${id}/export/markdown`);
+  async downloadMarkdown(id: string, fallbackName: string, volume?: BidVolume): Promise<void> {
+    const query = volume ? `?volume=${volume}` : '';
+    const resp = await authFetch(`/api/projects/${id}/export/markdown${query}`);
     await downloadFromResponse(resp, `${fallbackName}.md`);
   },
-  async downloadPdf(id: string, fallbackName: string): Promise<void> {
-    const resp = await authFetch(`/api/projects/${id}/export/pdf`);
+  async downloadPdf(id: string, fallbackName: string, volume?: BidVolume): Promise<void> {
+    const query = volume ? `?volume=${volume}` : '';
+    const resp = await authFetch(`/api/projects/${id}/export/pdf${query}`);
     await downloadFromResponse(resp, `${fallbackName}.pdf`);
+  },
+  /** 合并多份 PDF 为一册 */
+  async mergePdf(id: string, files: File[], fallbackName: string): Promise<void> {
+    const form = new FormData();
+    for (const file of files) form.append('files', file);
+    const resp = await authFetch(`/api/projects/${id}/tools/merge-pdf`, {
+      method: 'POST',
+      body: form,
+    });
+    await downloadFromResponse(resp, `${fallbackName}-合并.pdf`);
   },
   async downloadStampedPdf(id: string, fallbackName: string): Promise<void> {
     const resp = await authFetch(`/api/projects/${id}/export/stamped-pdf`);

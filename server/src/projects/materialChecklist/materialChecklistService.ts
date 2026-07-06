@@ -8,7 +8,7 @@ import type { Outline } from '../outline/types.js';
 import { renderOutlineText } from '../outline/treeUtils.js';
 import { renderResponseMatrixForPrompt } from '../responseMatrix/responseMatrixService.js';
 import type { ResponseMatrix } from '../responseMatrix/types.js';
-import type { TenderFileType } from '../types.js';
+import type { MaterialFileType } from '../types.js';
 import type {
   MaterialItemCategory,
   MaterialItemStatus,
@@ -48,7 +48,7 @@ const OWNER_ROLES = new Set<MaterialOwnerRole>([
 ]);
 
 const STATUSES = new Set<MaterialItemStatus>(['pending', 'uploaded', 'needs_review', 'not_required']);
-const FILE_TYPES = new Set<TenderFileType>(['pdf', 'docx', 'txt', 'md']);
+const FILE_TYPES = new Set<MaterialFileType>(['pdf', 'docx', 'txt', 'md', 'png', 'jpg', 'xlsx', 'csv']);
 
 function normalizeCategory(value: unknown): MaterialItemCategory {
   const raw = String(value ?? '').trim();
@@ -65,12 +65,13 @@ function normalizeStatus(value: unknown): MaterialItemStatus {
   return STATUSES.has(raw as MaterialItemStatus) ? (raw as MaterialItemStatus) : 'pending';
 }
 
-function normalizeAcceptedFileTypes(value: unknown): TenderFileType[] {
-  if (!Array.isArray(value)) return ['pdf', 'docx', 'txt', 'md'];
+function normalizeAcceptedFileTypes(value: unknown): MaterialFileType[] {
+  if (!Array.isArray(value)) return ['pdf', 'docx', 'txt', 'md', 'png', 'jpg', 'xlsx', 'csv'];
   const out = value
     .map((item) => String(item ?? '').trim().toLowerCase())
-    .filter((item): item is TenderFileType => FILE_TYPES.has(item as TenderFileType));
-  return out.length ? Array.from(new Set(out)) : ['pdf', 'docx', 'txt', 'md'];
+    .map((item) => (item === 'jpeg' ? 'jpg' : item))
+    .filter((item): item is MaterialFileType => FILE_TYPES.has(item as MaterialFileType));
+  return out.length ? Array.from(new Set(out)) : ['pdf', 'docx', 'txt', 'md', 'png', 'jpg', 'xlsx', 'csv'];
 }
 
 function normalizeChecklist(raw: RawMaterialChecklist): ProjectMaterialChecklist {
@@ -180,7 +181,7 @@ export async function generateMaterialChecklist(
           '      "purpose": "用于响应哪个要求或补充哪个投标内容",',
           '      "sourceClause": "招标条款编号/依据短句，可空",',
           '      "suggestedSection": "建议补充到的投标文件章节/附件/表格",',
-          '      "acceptedFileTypes": ["pdf", "docx", "txt", "md"],',
+          '      "acceptedFileTypes": ["pdf", "docx", "txt", "md", "png", "jpg", "xlsx", "csv"],',
           '      "uploadTips": "给客户的上传提示，如需加盖公章/扫描清晰/合同关键页等"',
           '    }',
           '  ]',
@@ -193,6 +194,7 @@ export async function generateMaterialChecklist(
           '4. required=false 只用于加分或建议性材料。',
           '5. 结合行业/采购类型画像补充行业特有资料项，例如软件接口/账号/数据样例、电力安全资质/设备参数、工程图纸/人员证书等；但强制项必须能回到招标文件或响应矩阵依据。',
           '6. 不要输出空泛的“上传相关资料”，必须具体到材料类型。',
+          '7. 营业执照、资质证书、人员证书等证照类材料 acceptedFileTypes 建议为 ["png","jpg","pdf"]；财务报表、报价清单、设备清单等表格类建议为 ["xlsx","csv","pdf"]。',
         ].join('\n'),
       },
     ],
