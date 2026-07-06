@@ -1,0 +1,18 @@
+## /Users/david/Documents/28 标书系统/bidding/web/index.html
+1) 在 <head> 内、<title> 之后加入 Noto Serif SC 的 webfont 三行：<link rel="preconnect" href="https://fonts.googleapis.com" /> / <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /> / <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&display=swap" rel="stylesheet" />。2) <title> 文案可改为「智标 BidForge · AI 标书写作系统」（与侧栏副标统一，去『工具』）。禁止用 @import。
+
+## /Users/david/Documents/28 标书系统/bidding/web/src/App.tsx
+1) brand .logo 内的汉字「智」(line14) 改为内联 SVG brand-mark（印章方框+抬头线+赤陶印点，见 iconSet）。CSS 已把 .logo 容器改成暖白底+墨色描边方框，移除蓝紫渐变。2) 副标题「AI 标书写作工具」(line17) 改「AI 标书写作系统」。3) 导航项「📝 标书工作台」(line25)：去掉 📝，结构改为 <span className="nav-item ..."> 内放 document-text SVG + 文字「标书工作台」；同理「⚙️ 设置」(line31) 去 ⚙️ 换 settings SVG。建议把每个 nav-item 内文字包一个 <span> 以保持 gap 布局。4) 底注「v0.1.0 · 原创开源」(line36) 删除『· 原创开源』自我标榜文案，仅保留「v0.1.0」。组件逻辑、setTab、active 类拼接全部不变。
+
+## /Users/david/Documents/28 标书系统/bidding/web/src/pages/SettingsPage.tsx
+1) Key 状态 badge(line145-147)：移除文案里的 ● / ○ 字符，改为在 <span className="badge badge-on/off"> 内渲染 check-circle SVG（已设置）或 circle SVG（未设置）+ 纯文字「当前提供方 Key 已设置 / 未设置」。2) provider-tabs(line129-142)：DOM 不用改，CSS 已把它从胶囊分段控件改成底线 tab；active 类拼接保持。3) 「保存配置」按钮(line245)可在文字前加 save SVG；「测试连通」按钮(line248)加 plug SVG（放在 btn 内、文字前，CSS .btn svg 已配尺寸）。4) result 框(line254-260)：从字符串移除 ✅/❌ 前缀，改为条件渲染：testResult.ok 时在 .result.ok 内先放 check-circle SVG 再放文字 `连通成功（${provider} · ${model}）\n模型回复：${reply}`；失败时放 alert-triangle SVG + `连通失败：${message}`。务必保证错误态有 alert-triangle 图标 + 文案双重兜底，不仅靠色相（色弱可辨/无障碍底线）。5) temperature 字段 label 可前置 thermometer SVG（可选）。逻辑与 state 不变。
+
+## /Users/david/Documents/28 标书系统/bidding/web/src/pages/WorkspacePage.tsx
+1) 新增顶部 flow-bar（takram 横向四步流总览）：在 page-header 之后、project-bar 之前（或之后）插入 <div className="flow-bar">，渲染四个 .flow-chip（含 .flow-no 显示 01/02/03/04 + 名称：上传招标文件/AI生成目录/AI生成正文/导出Word），chip 之间用 .flow-sep 包 chevron-right SVG；按现有前置条件给 data-current/data-done：step1 done = !!current?.tender，step2 可用 = !!current?.tender、done = !!outline，step3/4 可用 = !!outline。纯展示，不改动数据流。2) 「＋ 新建」按钮(line169) 去全角＋，btn 内放 plus SVG + 文字「新建」。3) 「删除」按钮(line172) 内放 trash SVG。4) 错误条(line178)：去掉 ❌，改 <div className="result err"> 内 alert-triangle SVG + {error}。5) 四处 step-no(line183/249/307/336)：把数字 1/2/3/4 改为两位补零 '01'/'02'/'03'/'04'（CSS 已用 mono 渲染）；muted-no 类拼接保持。6) Step1 dropzone(line198-223)：在 span 文案前加 upload-cloud SVG（CSS .dropzone svg 已配），文案保留，并可加一行 <span className="dz-sub">支持 PDF / Word(.docx) / txt / md</span>。7) 「已解析」badge(line227) 内加 check-circle SVG。8) preview-title(line238) 前加 eye SVG。9) Step2「AI 生成目录」主按钮(line263) 加 pen-line SVG；「AI 配置」按钮(line270) 加 settings SVG。10) Step4「导出 Word」按钮(line349) 加 download SVG。所有 onClick/disabled/handler 逻辑不变。
+
+## /Users/david/Documents/28 标书系统/bidding/web/src/components/OutlineEditor.tsx
+1) mini-btn「＋子」(line55-57)：去全角＋子文字，btn 内放 corner-down-right SVG，title 保留「添加子条目」（图标按钮可加 aria-label）。2) mini-btn「删」(line59-61)：去单字删，放 trash SVG，保留 title/aria-label「删除」。3) 底部「＋ 添加一级章节」(line110-117)：去全角＋，btn 内放 plus SVG + 文字「添加一级章节」。4) outline-dot(line47) 的 data-depth 保持，CSS 已改为单色赤陶 + 明度/opacity 分级（弃用蓝色三档）。5) 文档标题 field、outline-input、outline-tree 结构不变，仅受 CSS 重写影响。
+
+## /Users/david/Documents/28 标书系统/bidding/web/src/components/ContentEditor.tsx
+1) 「一键生成全部正文」主按钮(line69) 加 pen-line SVG；「保存正文」按钮(line73) 加 save SVG。2) 进度提示(line84)：.result.ok 内可前置 check-circle SVG（进度完成态）；保持 progress 文案。3) 错误条(line85)：去 ❌，.result.err 内 alert-triangle SVG + {err}。4) 状态 badge(line96-98)：已生成保持 badge-on（可内嵌 check-circle SVG），待生成建议从 badge-off 改为 badge-warn（黄褐，语义更准），并去掉纯文字依赖、文案保留「已生成/待生成」。5) content-idx(line94) 序号保持数字，CSS 已改用 serif 渲染（条款编号感）。6) 单节按钮「生成本节/重新生成」(line99-105) 加 pen-line SVG。7) content-path 的 ' / ' 分隔(line95)可保留文本，或用 chevron-right SVG 替换分隔符（可选）。textarea 与所有生成/保存逻辑不变。
+
