@@ -2,6 +2,7 @@ import { jsonChat } from '../../ai/jsonChat.js';
 import type { AIConfig } from '../../ai/types.js';
 import { renderAnalysisForPrompt } from '../analysis/analysisService.js';
 import type { TenderAnalysis } from '../analysis/types.js';
+import { getChapterText, type TenderChapter } from '../tenderChapters.js';
 import type {
   IndustryConfidence,
   ProcurementObjectType,
@@ -158,10 +159,13 @@ export async function classifyTenderIndustry(
   tenderText: string,
   projectName: string,
   analysis: TenderAnalysis | null,
+  chapters?: TenderChapter[],
 ): Promise<TenderIndustryProfile> {
-  const clippedTender = tenderText.slice(0, MAX_TENDER_CHARS);
+  const clippedTender = chapters?.length
+    ? getChapterText(tenderText, chapters, ['notice', 'requirements'], MAX_TENDER_CHARS)
+    : tenderText.slice(0, MAX_TENDER_CHARS);
   const tenderNote =
-    tenderText.length > MAX_TENDER_CHARS
+    !chapters?.length && tenderText.length > MAX_TENDER_CHARS
       ? '\n\n（注：招标文件较长，此处为前部内容节选；请优先依据项目名称、采购需求、投标文件组成、资格条件、评分办法、合同条款判断。）'
       : '';
 

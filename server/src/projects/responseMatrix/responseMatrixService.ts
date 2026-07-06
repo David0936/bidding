@@ -6,6 +6,7 @@ import { renderIndustryProfileForPrompt } from '../industryProfile/industryProfi
 import type { TenderIndustryProfile } from '../industryProfile/types.js';
 import type { Outline } from '../outline/types.js';
 import { collectLeaves, renderOutlineText } from '../outline/treeUtils.js';
+import { getChapterText, type TenderChapter } from '../tenderChapters.js';
 import type {
   ResponseItemCategory,
   ResponseItemPriority,
@@ -135,10 +136,13 @@ export async function generateResponseMatrix(
   outline: Outline | null,
   industryProfile: TenderIndustryProfile | null,
   originalPlanText: string | null = null,
+  chapters?: TenderChapter[],
 ): Promise<ResponseMatrix> {
-  const clippedTender = tenderText.slice(0, MAX_TENDER_CHARS);
+  const clippedTender = chapters?.length
+    ? getChapterText(tenderText, chapters, ['scoring', 'instructions', 'requirements'], MAX_TENDER_CHARS)
+    : tenderText.slice(0, MAX_TENDER_CHARS);
   const tenderNote =
-    tenderText.length > MAX_TENDER_CHARS
+    !chapters?.length && tenderText.length > MAX_TENDER_CHARS
       ? '\n\n（注：招标文件较长，此处为前部内容节选；优先提取评分办法、废标条款、投标文件组成、技术要求、合同交付服务条款。）'
       : '';
   const clippedOriginalPlan = originalPlanText?.slice(0, MAX_ORIGINAL_PLAN_CHARS) ?? '';

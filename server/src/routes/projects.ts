@@ -13,6 +13,8 @@ import {
   resetBidSection,
   getTenderText,
   getTenderOriginalText,
+  saveTenderChapters,
+  getTenderChapters,
   saveOriginalPlan,
   getOriginalPlanText,
   deleteOriginalPlan,
@@ -50,6 +52,7 @@ import { parseMaterialFile, materialMimeType } from '../projects/materialParser.
 import { filterOutlineByVolume, isBidVolume, VOLUME_LABELS } from '../projects/export/volumeUtils.js';
 import { PDFDocument } from 'pdf-lib';
 import { detectBidSections } from '../projects/bidSections.js';
+import { detectTenderChapters } from '../projects/tenderChapters.js';
 import { generateOutline, generateOutlineVariants } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
 import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysisService.js';
@@ -250,6 +253,12 @@ projectsRouter.get('/:id/tender-original-markdown', (req, res) => {
   res.json({ markdown });
 });
 
+projectsRouter.get('/:id/tender-chapters', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  res.json({ chapters: getTenderChapters(req.params.id) });
+});
+
 // 已有技术方案 Markdown（original-plan-text 为历史兼容接口）
 projectsRouter.get('/:id/original-plan-text', (req, res) => {
   const project = findOwnedProject(req.params.id, req);
@@ -289,6 +298,8 @@ projectsRouter.post('/:id/bid-sections/select', (req, res) => {
   }
   const updated = selectBidSection(req.params.id, sectionId, currentAccountId(req));
   if (!updated) return res.status(400).json({ message: '无法应用该标段，请重新上传招标文件后再试' });
+  const focused = getTenderText(req.params.id);
+  if (focused) saveTenderChapters(req.params.id, detectTenderChapters(focused));
   res.json(updated);
 });
 
@@ -298,6 +309,8 @@ projectsRouter.post('/:id/bid-sections/reset', (req, res) => {
   if (!project) return res.status(404).json({ message: '项目不存在' });
   const updated = resetBidSection(req.params.id, currentAccountId(req));
   if (!updated) return res.status(400).json({ message: '无法恢复全文，请重新上传招标文件后再试' });
+  const full = getTenderText(req.params.id);
+  if (full) saveTenderChapters(req.params.id, detectTenderChapters(full));
   res.json(updated);
 });
 
@@ -318,7 +331,7 @@ projectsRouter.post('/:id/analysis/generate', async (req, res) => {
   if (!tenderText) return res.status(400).json({ message: '请先上传并解析招标文件' });
 
   try {
-    const analysis = await analyzeTender(loadConfig(), tenderText, project.name);
+    const analysis = await analyzeTender(loadConfig(), tenderText, project.name, getTenderChapters(req.params.id));
     saveAnalysis(req.params.id, analysis);
     res.json(analysis);
   } catch (err) {
@@ -369,6 +382,7 @@ projectsRouter.post('/:id/industry-profile/generate', async (req, res) => {
       tenderText,
       project.name,
       getAnalysis(req.params.id),
+      getTenderChapters(req.params.id),
     );
     saveIndustryProfile(req.params.id, profile);
     res.json(profile);
@@ -399,6 +413,7 @@ projectsRouter.post('/:id/tender', upload.single('file'), async (req, res) => {
     };
     const saved = saveTender(req.params.id, tender, text, req.file.buffer, fileType);
     if (!saved) return res.status(404).json({ message: '项目不存在' });
+    saveTenderChapters(req.params.id, detectTenderChapters(text));
     const updated = saveBidSections(req.params.id, detectBidSections(text), currentAccountId(req)) ?? saved;
     res.json({ project: updated, charCount: text.length, preview: text.slice(0, 2000) });
   } catch (err) {
@@ -464,6 +479,7 @@ projectsRouter.post('/:id/outline/generate', async (req, res) => {
       project.name,
       listKnowledgeItems(currentAccountId(req)),
       getOriginalPlanText(req.params.id),
+      getTenderChapters(req.params.id),
     );
     saveOutline(req.params.id, outline);
     res.json(outline);
@@ -486,6 +502,7 @@ projectsRouter.post('/:id/outline/variants', async (req, res) => {
       project.name,
       listKnowledgeItems(currentAccountId(req)),
       getOriginalPlanText(req.params.id),
+      getTenderChapters(req.params.id),
     );
     res.json(variants);
   } catch (err) {
@@ -535,6 +552,7 @@ projectsRouter.post('/:id/global-facts/generate', async (req, res) => {
       outline,
       getAnalysis(req.params.id),
       getOriginalPlanText(req.params.id),
+      getTenderChapters(req.params.id),
     );
     saveGlobalFacts(req.params.id, facts);
     res.json(facts);
@@ -582,6 +600,7 @@ projectsRouter.post('/:id/response-matrix/generate', async (req, res) => {
       getOutline(req.params.id),
       getIndustryProfile(req.params.id),
       getOriginalPlanText(req.params.id),
+      getTenderChapters(req.params.id),
     );
     saveResponseMatrix(req.params.id, matrix);
     res.json(matrix);
@@ -641,6 +660,7 @@ projectsRouter.post('/:id/material-checklist/generate', async (req, res) => {
       getIndustryProfile(req.params.id),
       getResponseMatrix(req.params.id),
       getOutline(req.params.id),
+      getTenderChapters(req.params.id),
     );
     saveMaterialChecklist(req.params.id, checklist);
     res.json(checklist);

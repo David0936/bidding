@@ -8,6 +8,7 @@ import type { Outline } from '../outline/types.js';
 import { renderOutlineText } from '../outline/treeUtils.js';
 import { renderResponseMatrixForPrompt } from '../responseMatrix/responseMatrixService.js';
 import type { ResponseMatrix } from '../responseMatrix/types.js';
+import { getChapterText, type TenderChapter } from '../tenderChapters.js';
 import type { MaterialFileType } from '../types.js';
 import type {
   MaterialItemCategory,
@@ -126,10 +127,13 @@ export async function generateMaterialChecklist(
   industryProfile: TenderIndustryProfile | null,
   responseMatrix: ResponseMatrix | null,
   outline: Outline | null,
+  chapters?: TenderChapter[],
 ): Promise<ProjectMaterialChecklist> {
-  const clippedTender = tenderText.slice(0, MAX_TENDER_CHARS);
+  const clippedTender = chapters?.length
+    ? getChapterText(tenderText, chapters, ['format', 'instructions'], MAX_TENDER_CHARS)
+    : tenderText.slice(0, MAX_TENDER_CHARS);
   const tenderNote =
-    tenderText.length > MAX_TENDER_CHARS
+    !chapters?.length && tenderText.length > MAX_TENDER_CHARS
       ? '\n\n（注：招标文件较长，此处为前部内容节选；请优先梳理投标文件组成、资格审查、商务附件、技术证明、报价与盖章签字材料。）'
       : '';
 

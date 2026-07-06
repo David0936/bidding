@@ -4,6 +4,7 @@ import { jsonChat } from '../../ai/jsonChat.js';
 import type { AIConfig } from '../../ai/types.js';
 import type { KnowledgeItem } from '../../knowledge/types.js';
 import { renderKnowledgeCompact } from '../../knowledge/knowledgeService.js';
+import { getChapterText, type TenderChapter } from '../tenderChapters.js';
 import type { Outline, OutlineNode, OutlineVariant, OutlineVariantsResult } from './types.js';
 
 // 招标文件可能很长，这里截断喂给模型，控制 token 成本（目录阶段不需要全文细节）。
@@ -66,11 +67,14 @@ function buildPromptBlocks(
   projectName: string,
   knowledgeItems: KnowledgeItem[],
   originalPlanText: string | null,
+  chapters?: TenderChapter[],
 ): string[] {
-  const clipped = tenderText.slice(0, MAX_TENDER_CHARS);
+  const clipped = chapters?.length
+    ? getChapterText(tenderText, chapters, ['requirements', 'scoring'], MAX_TENDER_CHARS)
+    : tenderText.slice(0, MAX_TENDER_CHARS);
   const clippedOriginalPlan = originalPlanText?.slice(0, MAX_ORIGINAL_PLAN_CHARS) ?? '';
   const truncatedNote =
-    tenderText.length > MAX_TENDER_CHARS ? '\n\n（注：招标文件过长，以上为前部分内容节选）' : '';
+    !chapters?.length && tenderText.length > MAX_TENDER_CHARS ? '\n\n（注：招标文件过长，以上为前部分内容节选）' : '';
   const originalPlanBlock = clippedOriginalPlan
     ? [
         '用户上传了已有技术方案，当前任务是扩写和优化，不是完全从零编写。',
@@ -103,9 +107,10 @@ export async function generateOutline(
   projectName: string,
   knowledgeItems: KnowledgeItem[] = [],
   originalPlanText: string | null = null,
+  chapters?: TenderChapter[],
 ): Promise<Outline> {
   const userPrompt = [
-    ...buildPromptBlocks(tenderText, projectName, knowledgeItems, originalPlanText),
+    ...buildPromptBlocks(tenderText, projectName, knowledgeItems, originalPlanText, chapters),
     '',
     '请按以下 JSON 结构输出目录（children 可嵌套，最多三级；没有子级时给空数组；叶子节点给 estimatedWords，建议 800~4000 字）。如果存在已有技术方案，请在满足招标文件要求的前提下保留其主要结构和实质内容位置：',
     '{',
@@ -141,9 +146,10 @@ export async function generateOutlineVariants(
   projectName: string,
   knowledgeItems: KnowledgeItem[] = [],
   originalPlanText: string | null = null,
+  chapters?: TenderChapter[],
 ): Promise<OutlineVariantsResult> {
   const userPrompt = [
-    ...buildPromptBlocks(tenderText, projectName, knowledgeItems, originalPlanText),
+    ...buildPromptBlocks(tenderText, projectName, knowledgeItems, originalPlanText, chapters),
     '',
     '请一次生成 3 套不同侧重点的投标技术方案目录，供用户选择：',
     '方案一：稳健逐条响应，重视商务/技术/评分点覆盖。',

@@ -2,6 +2,7 @@ import { jsonChat } from '../../ai/jsonChat.js';
 import type { AIConfig } from '../../ai/types.js';
 import type { Outline } from '../outline/types.js';
 import { renderOutlineText } from '../outline/treeUtils.js';
+import { getChapterText, type ChapterRole, type TenderChapter } from '../tenderChapters.js';
 import type {
   GlobalFact,
   GlobalFacts,
@@ -35,6 +36,18 @@ interface RawTenderAnalysis {
 
 interface RawGlobalFacts {
   items?: unknown;
+}
+
+function selectTenderMaterial(
+  tenderText: string,
+  chapters: TenderChapter[] | undefined,
+  roles: ChapterRole[],
+  maxChars: number,
+  truncatedMessage: string,
+): string {
+  if (chapters?.length) return getChapterText(tenderText, chapters, roles, maxChars);
+  const clipped = tenderText.slice(0, maxChars);
+  return tenderText.length > maxChars ? clipped + truncatedMessage : clipped;
 }
 
 function asRecord(value: unknown): Record<string, string> {
@@ -133,12 +146,15 @@ export async function analyzeTender(
   config: AIConfig,
   tenderText: string,
   projectName: string,
+  chapters?: TenderChapter[],
 ): Promise<TenderAnalysis> {
-  const clipped = tenderText.slice(0, MAX_ANALYSIS_TENDER_CHARS);
-  const truncatedNote =
-    tenderText.length > MAX_ANALYSIS_TENDER_CHARS
-      ? '\n\n（注：招标文件较长，此处为前部内容节选；请基于可见原文谨慎提取，不要编造。）'
-      : '';
+  const clipped = selectTenderMaterial(
+    tenderText,
+    chapters,
+    ['instructions', 'scoring', 'requirements'],
+    MAX_ANALYSIS_TENDER_CHARS,
+    '\n\n（注：招标文件较长，此处为前部内容节选；请基于可见原文谨慎提取，不要编造。）',
+  );
 
   const raw = await jsonChat<RawTenderAnalysis>(config, {
     system: [
@@ -154,7 +170,7 @@ export async function analyzeTender(
           '',
           '招标文件内容：',
           '"""',
-          clipped + truncatedNote,
+          clipped,
           '"""',
           '',
           '请输出 JSON，字段如下：',
@@ -200,8 +216,15 @@ export async function generateGlobalFacts(
   outline: Outline,
   analysis: TenderAnalysis | null,
   originalPlanText: string | null = null,
+  chapters?: TenderChapter[],
 ): Promise<GlobalFacts> {
-  const clipped = tenderText.slice(0, MAX_FACT_TENDER_CHARS);
+  const clipped = selectTenderMaterial(
+    tenderText,
+    chapters,
+    ['instructions', 'scoring', 'requirements'],
+    MAX_FACT_TENDER_CHARS,
+    '\n\n（注：招标文件较长，此处为前部内容节选。）',
+  );
   const clippedOriginalPlan = originalPlanText?.slice(0, MAX_FACT_ORIGINAL_PLAN_CHARS) ?? '';
   const raw = await jsonChat<RawGlobalFacts>(config, {
     system: [

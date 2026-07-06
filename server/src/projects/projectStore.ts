@@ -5,6 +5,7 @@
 //   data/projects/<id>/original-plan.md 已有方案 Markdown 工作稿
 //   data/projects/<id>/original.<ext> 上传的原始文件
 //   data/projects/<id>/industry-profile.json 招标书行业/采购类型画像
+//   data/projects/<id>/tender-chapters.json 招标文件章节索引
 //   data/projects/<id>/response-matrix.json 点对点响应矩阵
 //   data/projects/<id>/deviation-table.json 商务/技术偏离表草稿
 //   data/projects/<id>/material-checklist.json 客户资料补齐清单
@@ -29,6 +30,7 @@ import type {
   ProjectMaterialFile,
   ProjectMaterialItem,
 } from './materialChecklist/types.js';
+import type { TenderChapter } from './tenderChapters.js';
 
 const DEFAULT_PROJECT_ACCOUNT_ID = process.env.EASY_BIDDING_DEFAULT_ACCOUNT_ID || 'default-account';
 
@@ -64,6 +66,9 @@ function globalFactsFile(id: string): string {
 }
 function industryProfileFile(id: string): string {
   return path.join(projectDir(id), 'industry-profile.json');
+}
+function tenderChaptersFile(id: string): string {
+  return path.join(projectDir(id), 'tender-chapters.json');
 }
 function responseMatrixFile(id: string): string {
   return path.join(projectDir(id), 'response-matrix.json');
@@ -326,6 +331,24 @@ export function getTenderText(id: string): string | null {
 
 export function getTenderOriginalText(id: string): string | null {
   return readFirstExisting([tenderOriginalMarkdownFile(id), tenderMarkdownFile(id), tenderTextFile(id)]);
+}
+
+export function saveTenderChapters(id: string, chapters: TenderChapter[]): TenderChapter[] | null {
+  const current = readMeta(id);
+  if (!current) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  fs.writeFileSync(tenderChaptersFile(id), JSON.stringify(chapters, null, 2), 'utf-8');
+  return chapters;
+}
+
+export function getTenderChapters(id: string): TenderChapter[] {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(tenderChaptersFile(id), 'utf-8')) as unknown;
+    return Array.isArray(parsed) ? (parsed as TenderChapter[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function saveBidSections(id: string, sections: BidSection[], accountId?: string): Project | null {
