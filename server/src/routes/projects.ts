@@ -162,6 +162,10 @@ function resolveExportOutline(
   return { outline: filtered, suffix: `-${VOLUME_LABELS[raw]}` };
 }
 
+function exportDocTitle(suffix: string): string {
+  return suffix ? `投标文件（${suffix.slice(1)}）` : '投标文件';
+}
+
 function sendDownload(res: Response, buffer: Buffer, contentType: string, fileName: string): void {
   const fallback = fileName.endsWith('.pdf')
     ? 'export.pdf'
@@ -870,7 +874,13 @@ projectsRouter.get('/:id/export/docx', async (req, res) => {
   if ('error' in resolved) return res.status(400).json({ message: resolved.error });
 
   try {
-    const buffer = await buildDocx(resolved.outline, { resolveImage: materialImageResolver(req.params.id) });
+    const buffer = await buildDocx(resolved.outline, {
+      cover: {
+        projectName: project.name || resolved.outline.title || '投标项目',
+        docTitle: exportDocTitle(resolved.suffix),
+      },
+      resolveImage: materialImageResolver(req.params.id),
+    });
     const baseName = safeExportBaseName(project.name || '投标技术方案');
     const fileName = `${baseName}${resolved.suffix}.docx`;
     sendDownload(

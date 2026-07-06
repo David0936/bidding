@@ -3,10 +3,16 @@
 import fs from 'node:fs';
 import {
   Document,
+  Footer,
+  Header,
   ImageRun,
   Packer,
+  PageBreak,
+  PageNumber,
   Paragraph,
+  SectionType,
   Table,
+  TableOfContents,
   TableCell,
   TableRow,
   TextRun,
@@ -35,6 +41,12 @@ const HEADING_BY_DEPTH = [
   HeadingLevel.HEADING_3,
   HeadingLevel.HEADING_4,
 ];
+
+const DOCX_BODY_FONT = { eastAsia: 'SimSun', ascii: 'Times New Roman', hAnsi: 'Times New Roman' };
+const DOCX_HEADING_FONT = { eastAsia: 'SimHei', ascii: 'SimHei', hAnsi: 'SimHei' };
+const DOCX_A4 = { width: 11906, height: 16838 };
+const DOCX_PAGE_MARGIN = { top: 1440, right: 1440, bottom: 1440, left: 1440, header: 720, footer: 720 };
+const DOCX_LINE_15 = 360;
 
 const A4 = { width: 595.28, height: 841.89 };
 const PDF_MARGIN = { top: 64, right: 56, bottom: 64, left: 56 };
@@ -82,6 +94,12 @@ export interface ResolvedImage {
 export type MaterialImageResolver = (ref: MaterialImageRef) => ResolvedImage | null;
 
 export interface BuildDocxOptions {
+  cover?: {
+    projectName: string;
+    docTitle: string;
+    bidderName?: string;
+    date?: string;
+  };
   resolveImage?: MaterialImageResolver;
 }
 
@@ -100,16 +118,21 @@ function resolveImageRef(ref: string, resolver?: MaterialImageResolver): Resolve
   }
 }
 
+type InlineRunOptions = {
+  font?: typeof DOCX_BODY_FONT;
+  size?: number;
+};
+
 /** 把一行内含 **加粗** 的文本切分为多个 TextRun */
-function inlineRuns(text: string): TextRun[] {
+function inlineRuns(text: string, options: InlineRunOptions = {}): TextRun[] {
   const runs: TextRun[] = [];
   const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((p) => p !== '');
   for (const part of parts) {
     const m = part.match(/^\*\*([^*]+)\*\*$/);
-    if (m) runs.push(new TextRun({ text: m[1], bold: true }));
-    else runs.push(new TextRun(part));
+    if (m) runs.push(new TextRun({ text: m[1], bold: true, ...options }));
+    else runs.push(new TextRun({ text: part, ...options }));
   }
-  return runs.length > 0 ? runs : [new TextRun(text)];
+  return runs.length > 0 ? runs : [new TextRun({ text, ...options })];
 }
 
 /** Markdown 表格 → docx 表格（表头加粗，等分列宽，全宽） */
@@ -127,7 +150,9 @@ function tableToDocx(block: TableBlock): Table {
             children: [
               new Paragraph({
                 spacing: { before: 30, after: 30 },
-                children: header ? [new TextRun({ text: cell, bold: true })] : inlineRuns(cell),
+                children: header
+                  ? [new TextRun({ text: cell, bold: true, font: DOCX_BODY_FONT, size: 21 })]
+                  : inlineRuns(cell, { font: DOCX_BODY_FONT, size: 21 }),
               }),
             ],
           }),
@@ -149,7 +174,13 @@ function imageToDocx(alt: string, ref: string, resolver?: MaterialImageResolver)
     return [
       new Paragraph({
         spacing: { after: 80 },
-        children: [new TextRun({ text: `【图片：${alt || ref}（未找到，请在资料清单中确认）】`, italics: true })],
+        children: [
+          new TextRun({
+            text: `【图片：${alt || ref}（未找到，请在资料清单中确认）】`,
+            italics: true,
+            font: DOCX_BODY_FONT,
+          }),
+        ],
       }),
     ];
   }
@@ -177,7 +208,7 @@ function imageToDocx(alt: string, ref: string, resolver?: MaterialImageResolver)
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { after: 80 },
-        children: [new TextRun({ text: alt, size: 18, color: '666666' })],
+        children: [new TextRun({ text: alt, size: 18, color: '666666', font: DOCX_BODY_FONT })],
       }),
     );
   }
@@ -195,7 +226,7 @@ function markdownToParagraphs(md: string, resolver?: MaterialImageResolver): (Pa
         out.push(
           new Paragraph({
             spacing: { before: 120, after: 60 },
-            children: [new TextRun({ text: block.text, bold: true })],
+            children: [new TextRun({ text: block.text, bold: true, font: DOCX_BODY_FONT })],
           }),
         );
         break;
@@ -231,6 +262,123 @@ function markdownToParagraphs(md: string, resolver?: MaterialImageResolver): (Pa
   }
 
   return out;
+}
+
+function docxCommonSectionProperties(startPageNumber = 1) {
+  return {
+    type: SectionType.NEXT_PAGE,
+    page: {
+      size: DOCX_A4,
+      margin: DOCX_PAGE_MARGIN,
+      pageNumbers: { start: startPageNumber },
+    },
+  };
+}
+
+function createDocxHeader(projectName: string): Header {
+  return new Header({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: projectName, size: 18, color: '666666', font: DOCX_BODY_FONT })],
+      }),
+    ],
+  });
+}
+
+function createDocxFooter(): Footer {
+  return new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({ text: '第 ', size: 18, color: '666666', font: DOCX_BODY_FONT }),
+          new TextRun({ children: [PageNumber.CURRENT], size: 18, color: '666666', font: DOCX_BODY_FONT }),
+          new TextRun({ text: ' 页 共 ', size: 18, color: '666666', font: DOCX_BODY_FONT }),
+          new TextRun({
+            children: [PageNumber.TOTAL_PAGES_IN_SECTION],
+            size: 18,
+            color: '666666',
+            font: DOCX_BODY_FONT,
+          }),
+          new TextRun({ text: ' 页', size: 18, color: '666666', font: DOCX_BODY_FONT }),
+        ],
+      }),
+    ],
+  });
+}
+
+function buildCoverSection(cover: NonNullable<BuildDocxOptions['cover']>) {
+  const bidder = cover.bidderName?.trim() || '（投标人名称）';
+  const date = cover.date?.trim() || new Date().toISOString().slice(0, 10);
+  const spacer = (height = 240) => new Paragraph({ spacing: { before: height, after: height }, children: [] });
+  return {
+    properties: {
+      page: {
+        size: DOCX_A4,
+        margin: DOCX_PAGE_MARGIN,
+      },
+    },
+    children: [
+      spacer(460),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 360 },
+        children: [new TextRun({ text: cover.projectName, bold: true, size: 44, font: DOCX_HEADING_FONT })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 1200 },
+        children: [new TextRun({ text: cover.docTitle, bold: true, size: 40, font: DOCX_HEADING_FONT })],
+      }),
+      spacer(480),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 240 },
+        children: [new TextRun({ text: `投标人：${bidder}（盖章）`, size: 28, font: DOCX_BODY_FONT })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 240 },
+        children: [new TextRun({ text: '法定代表人或授权代表：____________（签字或盖章）', size: 28, font: DOCX_BODY_FONT })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: `日期：${date}`, size: 28, font: DOCX_BODY_FONT })],
+      }),
+    ],
+  };
+}
+
+function buildDocxBodySection(outline: Outline, options: BuildDocxOptions) {
+  const projectName = options.cover?.projectName || outline.title || '投标文件';
+  const bodyChildren = renderNodes(outline.nodes, 0, options.resolveImage);
+  const titlePara = new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 360 },
+    children: [new TextRun({ text: outline.title || '投标技术方案', bold: true, size: 36, font: DOCX_HEADING_FONT })],
+  });
+
+  return {
+    properties: docxCommonSectionProperties(1),
+    headers: { default: createDocxHeader(projectName) },
+    footers: { default: createDocxFooter() },
+    children: [
+      ...(options.cover ? [] : [titlePara]),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: options.cover ? 260 : 0, after: 240 },
+        children: [new TextRun({ text: '目录', bold: true, size: 32, font: DOCX_HEADING_FONT })],
+      }),
+      new TableOfContents('目录', {
+        hyperlink: true,
+        headingStyleRange: '1-4',
+        entryAndPageNumberSeparator: ' .... ',
+      }),
+      new Paragraph({ children: [new PageBreak()] }),
+      ...bodyChildren,
+    ],
+  };
 }
 
 /** 递归渲染节点：标题 + （叶子）正文 */
@@ -282,18 +430,68 @@ export function buildMarkdown(outline: Outline): string {
 }
 
 export async function buildDocx(outline: Outline, options: BuildDocxOptions = {}): Promise<Buffer> {
-  const titlePara = new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 300 },
-    children: [new TextRun({ text: outline.title || '投标技术方案', bold: true, size: 36 })],
-  });
+  const sections = [
+    ...(options.cover ? [buildCoverSection(options.cover)] : []),
+    buildDocxBodySection(outline, options),
+  ];
 
   const doc = new Document({
-    sections: [
-      {
-        children: [titlePara, ...renderNodes(outline.nodes, 0, options.resolveImage)],
+    title: outline.title || options.cover?.docTitle || '投标文件',
+    creator: '中集易标 easy bidding',
+    features: { updateFields: true },
+    styles: {
+      default: {
+        document: {
+          run: { font: DOCX_BODY_FONT, size: 24 },
+          paragraph: { spacing: { line: DOCX_LINE_15, after: 120 } },
+        },
       },
-    ],
+      paragraphStyles: [
+        {
+          id: 'Normal',
+          name: 'Normal',
+          run: { font: DOCX_BODY_FONT, size: 24 },
+          paragraph: { spacing: { line: DOCX_LINE_15, after: 120 } },
+        },
+        {
+          id: 'Heading1',
+          name: 'Heading 1',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { font: DOCX_HEADING_FONT, size: 36, bold: true },
+          paragraph: { spacing: { before: 360, after: 180 }, outlineLevel: 0, keepNext: true },
+        },
+        {
+          id: 'Heading2',
+          name: 'Heading 2',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { font: DOCX_HEADING_FONT, size: 32, bold: true },
+          paragraph: { spacing: { before: 300, after: 160 }, outlineLevel: 1, keepNext: true },
+        },
+        {
+          id: 'Heading3',
+          name: 'Heading 3',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { font: DOCX_HEADING_FONT, size: 30, bold: true },
+          paragraph: { spacing: { before: 260, after: 140 }, outlineLevel: 2, keepNext: true },
+        },
+        {
+          id: 'Heading4',
+          name: 'Heading 4',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { font: DOCX_HEADING_FONT, size: 28, bold: true },
+          paragraph: { spacing: { before: 220, after: 120 }, outlineLevel: 3, keepNext: true },
+        },
+      ],
+    },
+    sections,
   });
 
   return Packer.toBuffer(doc);
@@ -611,6 +809,25 @@ async function drawSeal(doc: PDFDocument, seal: PdfSealOptions): Promise<void> {
   }
 }
 
+function drawPdfPageNumbers(doc: PDFDocument, fonts: PdfFonts): void {
+  const pages = doc.getPages();
+  const total = pages.length;
+  pages.forEach((page, index) => {
+    const { width } = page.getSize();
+    const text = `第 ${index + 1} 页 / 共 ${total} 页`;
+    const size = 9;
+    const font = fonts.regular;
+    const safeText = sanitizeForFont(text, fonts);
+    page.drawText(safeText, {
+      x: (width - font.widthOfTextAtSize(safeText, size)) / 2,
+      y: 28,
+      size,
+      font,
+      color: rgb(0.45, 0.48, 0.54),
+    });
+  });
+}
+
 export async function buildPdf(outline: Outline, options: BuildPdfOptions = {}): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const fonts = await loadPdfFonts(doc);
@@ -639,6 +856,7 @@ export async function buildPdf(outline: Outline, options: BuildPdfOptions = {}):
   ctx.y -= 18;
 
   await renderPdfNodes(ctx, outline.nodes, 0, options.resolveImage);
+  drawPdfPageNumbers(doc, fonts);
 
   if (options.seal) {
     await drawSeal(doc, options.seal);
