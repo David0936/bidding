@@ -29,3 +29,4 @@ npm-debug.log*
 *.swp
 testdata/
 testdata/out/
+.claude/worktrees/

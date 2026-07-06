@@ -120,7 +120,11 @@ function parseChapterHeading(line: string): HeadingCandidate | null {
 export function classifyChapterRole(title: string): ChapterRole[] {
   const normalized = normalizeTitle(title);
   const roles: ChapterRole[] = [];
-  if (/格式|响应文件|投标文件组成|投标文件的组成|附件/.test(normalized)) roles.push('format');
+  // 「合同条款及格式」类标题的"格式"指合同格式，不是投标文件格式章，排除后单独归 contract
+  const isContractChapter = /合同|协议/.test(normalized);
+  if (!isContractChapter && /格式|响应文件|投标文件组成|投标文件的组成|附件/.test(normalized)) {
+    roles.push('format');
+  }
   if (/评标|评审|评分|评定|评审方法|评分细则|综合评分/.test(normalized)) roles.push('scoring');
   if (/须知|供应商须知|投标人须知|前附表/.test(normalized)) roles.push('instructions');
   if (/需求|技术要求|技术规范|采购内容|采购清单|服务要求|设计任务|工程量清单/.test(normalized)) {
