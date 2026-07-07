@@ -814,6 +814,7 @@ projectsRouter.post('/:id/bid-readiness/run', (req, res) => {
       materialChecklist: getMaterialChecklist(req.params.id),
       audit: getConsistencyAudit(req.params.id),
       sealPlacements: getSealPlacements(req.params.id),
+      tenderText: getTenderText(req.params.id),
     });
     saveBidReadinessReport(req.params.id, report);
     res.json(report);

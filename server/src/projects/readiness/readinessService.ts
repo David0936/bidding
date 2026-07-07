@@ -1,4 +1,5 @@
 import type { ConsistencyAudit } from '../audit/types.js';
+import { runDeterministicChecks } from '../checks/deterministicChecks.js';
 import type { TenderIndustryProfile } from '../industryProfile/types.js';
 import type { ProjectMaterialChecklist } from '../materialChecklist/types.js';
 import type { Outline } from '../outline/types.js';
@@ -19,6 +20,8 @@ interface BuildReadinessInput {
   materialChecklist: ProjectMaterialChecklist | null;
   audit: ConsistencyAudit | null;
   sealPlacements: SealPlacement[];
+  /** 招标文件工作稿全文，用于工期/有效期等确定性规则比对；可空 */
+  tenderText?: string | null;
 }
 
 const STATUS_OPEN = new Set<ResponseItemStatus>(['missing', 'partial', 'risk']);
@@ -221,6 +224,21 @@ export function buildBidReadinessReport(input: BuildReadinessInput): BidReadines
       );
     }
   }
+
+  // 确定性废标点校验：金额大小写、跨表总价、工期/有效期（纯规则，不依赖 AI）
+  const deterministic = runDeterministicChecks(input.outline, input.tenderText);
+  deterministic.forEach((item, index) => {
+    issues.push(
+      issue(
+        `det-${item.rule}-${index + 1}`,
+        item.severity === 'blocker' ? 'blocker' : 'medium',
+        item.rule.startsWith('amount') ? '金额一致性问题' : '工期/有效期响应问题',
+        item.message,
+        '按招标文件要求修正正文对应位置后重新运行总检。',
+        'consistency',
+      ),
+    );
+  });
 
   if (input.sealPlacements.length === 0) {
     issues.push(
