@@ -75,6 +75,27 @@ export interface AuthMeResult {
   user: AuthProfile | null;
 }
 
+export interface BidderProfile {
+  companyName: string;
+  unifiedSocialCreditCode: string;
+  address: string;
+  phone: string;
+  bankName: string;
+  bankAccount: string;
+  legalRep: {
+    name: string;
+    idNo: string;
+    phone: string;
+  };
+  agent: {
+    name: string;
+    idNo: string;
+    phone: string;
+    email: string;
+  };
+  updatedAt?: string;
+}
+
 export interface AdminLoginResult {
   token: string;
   expiresInSeconds: number;
@@ -582,6 +603,38 @@ export interface ProjectMaterialItem {
 export interface ProjectMaterialChecklist {
   summary: string;
   items: ProjectMaterialItem[];
+  generatedAt: string;
+  updatedAt: string;
+}
+
+// ===== 投标文件格式文书 =====
+export type FormatDocKind = 'letter' | 'table' | 'attachment' | 'freeform' | 'cover' | 'toc';
+export type FormatFieldSource = 'project' | 'bidder' | 'manual';
+export type FormatDocStatus = 'draft' | 'confirmed';
+export type FormatDocVolume = Extract<BidVolume, 'business' | 'price' | 'technical'>;
+
+export interface FormatField {
+  key: string;
+  label: string;
+  source: FormatFieldSource;
+  value: string;
+}
+
+export interface FormatDoc {
+  id: string;
+  title: string;
+  kind: FormatDocKind;
+  originalText: string;
+  filledText: string;
+  fields: FormatField[];
+  volume: FormatDocVolume;
+  status: FormatDocStatus;
+  note?: string;
+}
+
+export interface FormatDocsResult {
+  sourceChapter: string;
+  docs: FormatDoc[];
   generatedAt: string;
   updatedAt: string;
 }

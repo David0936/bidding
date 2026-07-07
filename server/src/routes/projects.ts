@@ -32,6 +32,8 @@ import {
   getDeviationTable,
   saveMaterialChecklist,
   getMaterialChecklist,
+  saveFormatDocs,
+  getFormatDocs,
   saveMaterialFile,
   deleteMaterialFile,
   getMaterialFileBinary,
@@ -52,7 +54,7 @@ import { parseMaterialFile, materialMimeType } from '../projects/materialParser.
 import { filterOutlineByVolume, isBidVolume, VOLUME_LABELS } from '../projects/export/volumeUtils.js';
 import { PDFDocument } from 'pdf-lib';
 import { detectBidSections } from '../projects/bidSections.js';
-import { detectTenderChapters } from '../projects/tenderChapters.js';
+import { detectTenderChapters, getChapterText } from '../projects/tenderChapters.js';
 import { generateOutline, generateOutlineVariants } from '../projects/outline/outlineService.js';
 import { generateSectionContent } from '../projects/content/contentService.js';
 import { analyzeTender, generateGlobalFacts } from '../projects/analysis/analysisService.js';
@@ -60,6 +62,7 @@ import { classifyTenderIndustry } from '../projects/industryProfile/industryProf
 import { generateResponseMatrix } from '../projects/responseMatrix/responseMatrixService.js';
 import { generateDeviationTableFromResponseMatrix } from '../projects/deviationTable/deviationTableService.js';
 import { generateMaterialChecklist } from '../projects/materialChecklist/materialChecklistService.js';
+import { generateFormatDocs, refreshFormatDocFilledText } from '../projects/formatDocs/formatDocsService.js';
 import { auditConsistency } from '../projects/audit/consistencyAuditService.js';
 import { buildBidReadinessReport } from '../projects/readiness/readinessService.js';
 import { listKnowledgeItems } from '../knowledge/knowledgeStore.js';
@@ -80,10 +83,12 @@ import { errorMessage, errorStatus } from './errors.js';
 import { getCurrentAccountId } from '../billing/requestContext.js';
 import { assertFeatureAccess, assertProjectCreationAllowed } from '../billing/billingStore.js';
 import { extractBearerToken, resolveToken } from '../auth/authStore.js';
+import { getBidderProfile } from '../bidder/bidderProfileStore.js';
 import type { BillingFeatureCode } from '../billing/types.js';
 import type { ElectronicSeal, Project, SealPlacement, TenderDoc } from '../projects/types.js';
 import type { Outline } from '../projects/outline/types.js';
 import type { GlobalFacts, TenderAnalysis } from '../projects/analysis/types.js';
+import type { FormatDoc, FormatDocsResult, FormatDocVolume } from '../projects/formatDocs/types.js';
 
 export const projectsRouter = Router();
 
@@ -115,6 +120,50 @@ function requireFeature(req: Request, res: Response, feature: BillingFeatureCode
 
 function safeExportBaseName(name: string): string {
   return (name || '投标技术方案').replace(/[\\/:*?"<>|]/g, '_');
+}
+
+const FORMAT_DOC_VOLUMES = new Set<FormatDocVolume>(['business', 'price', 'technical']);
+
+function emptyFormatDocsResult(): FormatDocsResult {
+  const now = new Date().toISOString();
+  return { sourceChapter: '', docs: [], generatedAt: now, updatedAt: now };
+}
+
+function estimateWords(text: string): number {
+  const compact = text.replace(/\s+/g, '');
+  return Math.max(300, Math.min(3000, compact.length));
+}
+
+function stripInsertedFormatNodes(nodes: Outline['nodes']): Outline['nodes'] {
+  return nodes
+    .filter((node) => !node.id.startsWith('fmt_'))
+    .map((node) => ({
+      ...node,
+      children: stripInsertedFormatNodes(node.children),
+    }));
+}
+
+function normalizeFormatDocUpdate(current: FormatDoc, body: unknown): FormatDoc {
+  const patch = body && typeof body === 'object' ? (body as Partial<FormatDoc> & { reapplyFields?: boolean }) : {};
+  const next: FormatDoc = {
+    ...current,
+    filledText: typeof patch.filledText === 'string' ? patch.filledText : current.filledText,
+    fields: Array.isArray(patch.fields)
+      ? patch.fields.map((field, index) => ({
+          key: String(field?.key ?? '').trim() || `field_${index + 1}`,
+          label: String(field?.label ?? '').trim() || `字段 ${index + 1}`,
+          source: field?.source === 'project' || field?.source === 'bidder' || field?.source === 'manual'
+            ? field.source
+            : 'manual',
+          value: String(field?.value ?? ''),
+        }))
+      : current.fields,
+    status: patch.status === 'confirmed' ? 'confirmed' : patch.status === 'draft' ? 'draft' : current.status,
+    volume: FORMAT_DOC_VOLUMES.has(patch.volume as FormatDocVolume)
+      ? (patch.volume as FormatDocVolume)
+      : current.volume,
+  };
+  return patch.reapplyFields ? refreshFormatDocFilledText(next) : next;
 }
 
 function normalizePlacement(input: unknown): SealPlacement | null {
@@ -760,6 +809,104 @@ projectsRouter.delete('/:id/material-checklist/:itemId/files/:fileId', (req, res
   const updated = deleteMaterialFile(req.params.id, req.params.itemId, req.params.fileId);
   if (!updated) return res.status(404).json({ message: '资料文件不存在' });
   res.json(updated);
+});
+
+// 读取投标文件格式文书
+projectsRouter.get('/:id/format-docs', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  res.json(getFormatDocs(req.params.id) ?? emptyFormatDocsResult());
+});
+
+// 从“投标文件格式”章节提取授权书、声明、报价表等格式文书
+projectsRouter.post('/:id/format-docs/generate', async (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const tenderText = getTenderText(req.params.id);
+  if (!tenderText) return res.status(400).json({ message: '请先上传并解析招标文件' });
+
+  try {
+    let chapters = getTenderChapters(req.params.id);
+    if (chapters.length === 0) {
+      chapters = detectTenderChapters(tenderText);
+      saveTenderChapters(req.params.id, chapters);
+    }
+    if (!chapters.some((chapter) => chapter.roles.includes('format'))) {
+      return res.status(400).json({ message: '未识别到投标文件格式章节，可能该招标文件未附格式要求' });
+    }
+
+    const formatChapterText = getChapterText(tenderText, chapters, ['format'], 30000);
+    if (!formatChapterText.trim()) {
+      return res.status(400).json({ message: '未识别到投标文件格式章节，可能该招标文件未附格式要求' });
+    }
+
+    const result = await generateFormatDocs(
+      loadConfig(),
+      formatChapterText,
+      project.name,
+      getAnalysis(req.params.id),
+      getGlobalFacts(req.params.id),
+      getBidderProfile(currentAccountId(req)),
+    );
+    const saved = saveFormatDocs(req.params.id, result);
+    res.json(saved ?? result);
+  } catch (err) {
+    res.status(errorStatus(err)).json({ message: errorMessage(err, '格式文书提取失败') });
+  }
+});
+
+// 保存单份格式文书的填充值、字段、状态与分册归属
+projectsRouter.put('/:id/format-docs/:docId', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const current = getFormatDocs(req.params.id);
+  if (!current) return res.status(404).json({ message: '请先生成格式文书' });
+  const target = current.docs.find((doc) => doc.id === req.params.docId);
+  if (!target) return res.status(404).json({ message: '格式文书不存在' });
+
+  const next: FormatDocsResult = {
+    ...current,
+    docs: current.docs.map((doc) =>
+      doc.id === req.params.docId ? normalizeFormatDocUpdate(doc, req.body) : doc,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+  const saved = saveFormatDocs(req.params.id, next);
+  res.json(saved ?? next);
+});
+
+// 把已确认格式文书插入标书大纲顶部，作为商务/报价等分册叶子正文
+projectsRouter.post('/:id/format-docs/apply', (req, res) => {
+  const project = findOwnedProject(req.params.id, req);
+  if (!project) return res.status(404).json({ message: '项目不存在' });
+  const result = getFormatDocs(req.params.id);
+  if (!result || result.docs.length === 0) return res.status(400).json({ message: '请先生成格式文书' });
+  const confirmed = result.docs.filter((doc) => doc.status === 'confirmed');
+  if (confirmed.length === 0) return res.status(400).json({ message: '请先确认至少一份格式文书' });
+  const outline = getOutline(req.params.id);
+  if (!outline) return res.status(400).json({ message: '请先生成目录' });
+
+  const formatNode: Outline['nodes'][number] = {
+    id: 'fmt_format_docs',
+    title: '投标文件格式文书',
+    volume: 'business',
+    estimatedWords: confirmed.reduce((sum, doc) => sum + estimateWords(doc.filledText), 0),
+    children: confirmed.map((doc) => ({
+      id: doc.id.startsWith('fmt_') ? doc.id : `fmt_${doc.id}`,
+      title: doc.title,
+      volume: doc.volume,
+      estimatedWords: estimateWords(doc.filledText),
+      content: doc.filledText,
+      children: [],
+    })),
+  };
+  const updated: Outline = {
+    ...outline,
+    nodes: [formatNode, ...stripInsertedFormatNodes(outline.nodes)],
+    updatedAt: new Date().toISOString(),
+  };
+  const saved = saveOutline(req.params.id, updated, { clearResponseMatrix: false });
+  res.json(saved ?? updated);
 });
 
 // 读取全文一致性审计结果

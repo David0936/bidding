@@ -9,6 +9,7 @@
 //   data/projects/<id>/response-matrix.json 点对点响应矩阵
 //   data/projects/<id>/deviation-table.json 商务/技术偏离表草稿
 //   data/projects/<id>/material-checklist.json 客户资料补齐清单
+//   data/projects/<id>/format-docs.json 投标文件格式文书
 //   data/projects/<id>/materials/<itemId>/ 上传资料原文与解析文本
 //   data/projects/<id>/bid-readiness.json 提交前总检报告
 //   data/projects/<id>/seal-image.bin 电子印章图片
@@ -30,6 +31,7 @@ import type {
   ProjectMaterialFile,
   ProjectMaterialItem,
 } from './materialChecklist/types.js';
+import type { FormatDocsResult } from './formatDocs/types.js';
 import type { TenderChapter } from './tenderChapters.js';
 
 const DEFAULT_PROJECT_ACCOUNT_ID = process.env.EASY_BIDDING_DEFAULT_ACCOUNT_ID || 'default-account';
@@ -78,6 +80,9 @@ function deviationTableFile(id: string): string {
 }
 function materialChecklistFile(id: string): string {
   return path.join(projectDir(id), 'material-checklist.json');
+}
+function formatDocsFile(id: string): string {
+  return path.join(projectDir(id), 'format-docs.json');
 }
 function materialsDir(id: string): string {
   return path.join(projectDir(id), 'materials');
@@ -255,6 +260,7 @@ function clearGeneratedFiles(
     industryProfileFile(id),
     responseMatrixFile(id),
     deviationTableFile(id),
+    formatDocsFile(id),
     consistencyAuditFile(id),
     bidReadinessFile(id),
   ];
@@ -484,6 +490,7 @@ export function saveOutline(
     fs.rmSync(responseMatrixFile(id), { force: true });
     fs.rmSync(deviationTableFile(id), { force: true });
     fs.rmSync(materialChecklistFile(id), { force: true });
+    fs.rmSync(formatDocsFile(id), { force: true });
   }
   fs.rmSync(consistencyAuditFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
@@ -510,6 +517,7 @@ export function saveAnalysis(id: string, analysis: TenderAnalysis): TenderAnalys
   fs.rmSync(responseMatrixFile(id), { force: true });
   fs.rmSync(deviationTableFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
+  fs.rmSync(formatDocsFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
@@ -533,6 +541,7 @@ export function saveIndustryProfile(id: string, profile: TenderIndustryProfile):
   fs.rmSync(responseMatrixFile(id), { force: true });
   fs.rmSync(deviationTableFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
+  fs.rmSync(formatDocsFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
@@ -557,6 +566,7 @@ export function saveGlobalFacts(id: string, facts: GlobalFacts): GlobalFacts | n
   fs.rmSync(responseMatrixFile(id), { force: true });
   fs.rmSync(deviationTableFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
+  fs.rmSync(formatDocsFile(id), { force: true });
   fs.rmSync(consistencyAuditFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
@@ -579,6 +589,7 @@ export function saveResponseMatrix(id: string, matrix: ResponseMatrix): Response
   fs.writeFileSync(responseMatrixFile(id), JSON.stringify(matrix, null, 2), 'utf-8');
   fs.rmSync(deviationTableFile(id), { force: true });
   fs.rmSync(materialChecklistFile(id), { force: true });
+  fs.rmSync(formatDocsFile(id), { force: true });
   fs.rmSync(bidReadinessFile(id), { force: true });
   updateProject(id, {});
   return matrix;
@@ -667,6 +678,38 @@ export function saveMaterialChecklist(
 export function getMaterialChecklist(id: string): ProjectMaterialChecklist | null {
   try {
     return normalizeMaterialChecklist(JSON.parse(fs.readFileSync(materialChecklistFile(id), 'utf-8')) as ProjectMaterialChecklist);
+  } catch {
+    return null;
+  }
+}
+
+export function saveFormatDocs(id: string, result: FormatDocsResult): FormatDocsResult | null {
+  const current = readMeta(id);
+  if (!current) return null;
+  ensureDirs();
+  fs.mkdirSync(projectDir(id), { recursive: true });
+  const normalized: FormatDocsResult = {
+    ...result,
+    generatedAt: result.generatedAt || nowIso(),
+    updatedAt: nowIso(),
+    docs: Array.isArray(result.docs) ? result.docs : [],
+  };
+  fs.writeFileSync(formatDocsFile(id), JSON.stringify(normalized, null, 2), 'utf-8');
+  fs.rmSync(consistencyAuditFile(id), { force: true });
+  fs.rmSync(bidReadinessFile(id), { force: true });
+  updateProject(id, {});
+  return normalized;
+}
+
+export function getFormatDocs(id: string): FormatDocsResult | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(formatDocsFile(id), 'utf-8')) as FormatDocsResult;
+    return {
+      ...parsed,
+      docs: Array.isArray(parsed.docs) ? parsed.docs : [],
+      generatedAt: parsed.generatedAt ?? nowIso(),
+      updatedAt: parsed.updatedAt ?? parsed.generatedAt ?? nowIso(),
+    };
   } catch {
     return null;
   }

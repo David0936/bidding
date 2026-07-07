@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type {
+  BidderProfile,
   DesktopPlatform,
   DesktopUpdateResult,
   ProviderType,
@@ -21,6 +22,26 @@ import {
 const PRESETS = {
   openai: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   claude: { baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-6' },
+};
+
+const EMPTY_BIDDER_PROFILE: BidderProfile = {
+  companyName: '',
+  unifiedSocialCreditCode: '',
+  address: '',
+  phone: '',
+  bankName: '',
+  bankAccount: '',
+  legalRep: {
+    name: '',
+    idNo: '',
+    phone: '',
+  },
+  agent: {
+    name: '',
+    idNo: '',
+    phone: '',
+    email: '',
+  },
 };
 
 function platformText(platform?: DesktopPlatform) {
@@ -52,6 +73,10 @@ export default function SettingsPage() {
   const [desktopVersion, setDesktopVersion] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<DesktopUpdateResult | null>(null);
+  const [bidderProfile, setBidderProfile] = useState<BidderProfile>(EMPTY_BIDDER_PROFILE);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSavedTip, setProfileSavedTip] = useState(false);
+  const [profileError, setProfileError] = useState('');
 
   // 表单状态
   const [provider, setProvider] = useState<ProviderType>('openai');
@@ -96,6 +121,13 @@ export default function SettingsPage() {
       .getVersion()
       .then(setDesktopVersion)
       .catch(() => setDesktopVersion(null));
+  }, []);
+
+  useEffect(() => {
+    api
+      .getBidderProfile()
+      .then((profile) => setBidderProfile({ ...EMPTY_BIDDER_PROFILE, ...profile }))
+      .catch((e) => setProfileError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   const payload = useMemo(
@@ -164,6 +196,36 @@ export default function SettingsPage() {
       setUpdateResult({ ok: false, message: e instanceof Error ? e.message : String(e) });
     } finally {
       setCheckingUpdate(false);
+    }
+  }
+
+  function patchBidderProfile(patch: Partial<BidderProfile>) {
+    setBidderProfile((profile) => ({ ...profile, ...patch }));
+  }
+
+  function patchBidderPerson(
+    key: 'legalRep' | 'agent',
+    patch: Partial<BidderProfile['legalRep'] & BidderProfile['agent']>,
+  ) {
+    setBidderProfile((profile) => ({
+      ...profile,
+      [key]: { ...profile[key], ...patch },
+    }));
+  }
+
+  async function handleSaveBidderProfile() {
+    setProfileSaving(true);
+    setProfileError('');
+    setProfileSavedTip(false);
+    try {
+      const profile = await api.saveBidderProfile(bidderProfile);
+      setBidderProfile({ ...EMPTY_BIDDER_PROFILE, ...profile });
+      setProfileSavedTip(true);
+      setTimeout(() => setProfileSavedTip(false), 2500);
+    } catch (e) {
+      setProfileError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProfileSaving(false);
     }
   }
 
@@ -335,6 +397,98 @@ export default function SettingsPage() {
                 ? `连通成功（${testResult.provider} · ${testResult.model}）\n模型回复：${testResult.reply}`
                 : `连通失败：${testResult.message}`}
             </span>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>投标主体档案</h2>
+        <p className="hint">用于自动填写授权书、投标函、声明函、报价表等格式文书，字段可按项目逐步补齐。</p>
+
+        <div className="field">
+          <label>投标单位名称</label>
+          <input
+            value={bidderProfile.companyName}
+            onChange={(e) => patchBidderProfile({ companyName: e.target.value })}
+            placeholder="例如：广州茂海信息科技有限公司"
+          />
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>统一社会信用代码</label>
+            <input
+              value={bidderProfile.unifiedSocialCreditCode}
+              onChange={(e) => patchBidderProfile({ unifiedSocialCreditCode: e.target.value })}
+            />
+          </div>
+          <div className="field">
+            <label>联系电话</label>
+            <input value={bidderProfile.phone} onChange={(e) => patchBidderProfile({ phone: e.target.value })} />
+          </div>
+        </div>
+        <div className="field">
+          <label>注册地址/通讯地址</label>
+          <input value={bidderProfile.address} onChange={(e) => patchBidderProfile({ address: e.target.value })} />
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>开户银行</label>
+            <input value={bidderProfile.bankName} onChange={(e) => patchBidderProfile({ bankName: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>银行账号</label>
+            <input value={bidderProfile.bankAccount} onChange={(e) => patchBidderProfile({ bankAccount: e.target.value })} />
+          </div>
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>法定代表人</label>
+            <input value={bidderProfile.legalRep.name} onChange={(e) => patchBidderPerson('legalRep', { name: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>法人身份证号</label>
+            <input value={bidderProfile.legalRep.idNo} onChange={(e) => patchBidderPerson('legalRep', { idNo: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>法人电话</label>
+            <input value={bidderProfile.legalRep.phone} onChange={(e) => patchBidderPerson('legalRep', { phone: e.target.value })} />
+          </div>
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>授权代表</label>
+            <input value={bidderProfile.agent.name} onChange={(e) => patchBidderPerson('agent', { name: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>代表身份证号</label>
+            <input value={bidderProfile.agent.idNo} onChange={(e) => patchBidderPerson('agent', { idNo: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>代表电话</label>
+            <input value={bidderProfile.agent.phone} onChange={(e) => patchBidderPerson('agent', { phone: e.target.value })} />
+          </div>
+        </div>
+        <div className="field">
+          <label>授权代表邮箱</label>
+          <input value={bidderProfile.agent.email} onChange={(e) => patchBidderPerson('agent', { email: e.target.value })} />
+        </div>
+
+        <div className="actions">
+          <button className="btn btn-primary" onClick={handleSaveBidderProfile} disabled={profileSaving}>
+            <IconSave />
+            {profileSaving ? '保存中…' : '保存投标主体档案'}
+          </button>
+          {profileSavedTip && (
+            <span className="badge badge-on">
+              <IconCheckCircle />
+              已保存
+            </span>
+          )}
+        </div>
+        {profileError && (
+          <div className="result err">
+            <IconAlertTriangle />
+            <span>{profileError}</span>
           </div>
         )}
       </div>

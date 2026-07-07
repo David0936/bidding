@@ -10,6 +10,7 @@ import type {
   AuthMeResult,
   AuthProfile,
   AuthResult,
+  BidderProfile,
   BidReadinessReport,
   BillingAccountStatus,
   BillingFeatureFlags,
@@ -19,6 +20,8 @@ import type {
   DeviationTable,
   DuplicateCheckRecord,
   DuplicateCheckResult,
+  FormatDoc,
+  FormatDocsResult,
   GlobalFacts,
   KnowledgeOverview,
   KnowledgeUploadResult,
@@ -221,6 +224,17 @@ export const api = {
     return adminJsonFetch<TestResult>('/api/settings/test', {
       method: 'POST',
       body: JSON.stringify(config),
+    });
+  },
+
+  // ===== 投标主体档案 =====
+  getBidderProfile(): Promise<BidderProfile> {
+    return jsonFetch<BidderProfile>('/api/bidder-profile');
+  },
+  saveBidderProfile(profile: Partial<BidderProfile>): Promise<BidderProfile> {
+    return jsonFetch<BidderProfile>('/api/bidder-profile', {
+      method: 'PUT',
+      body: JSON.stringify(profile),
     });
   },
 
@@ -502,6 +516,31 @@ export const api = {
     return jsonFetch<Outline>(`/api/projects/${id}/material-checklist/${itemId}/files/${fileId}/insert`, {
       method: 'POST',
       body: JSON.stringify({ nodeId }),
+    });
+  },
+
+  // ===== 投标文件格式文书 =====
+  getFormatDocs(id: string): Promise<FormatDocsResult> {
+    return jsonFetch<FormatDocsResult>(`/api/projects/${id}/format-docs`);
+  },
+  generateFormatDocs(id: string): Promise<FormatDocsResult> {
+    return jsonFetch<FormatDocsResult>(`/api/projects/${id}/format-docs/generate`, {
+      method: 'POST',
+    });
+  },
+  updateFormatDoc(
+    id: string,
+    docId: string,
+    patch: Partial<FormatDoc> & { reapplyFields?: boolean },
+  ): Promise<FormatDocsResult> {
+    return jsonFetch<FormatDocsResult>(`/api/projects/${id}/format-docs/${docId}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+  },
+  applyFormatDocs(id: string): Promise<Outline> {
+    return jsonFetch<Outline>(`/api/projects/${id}/format-docs/apply`, {
+      method: 'POST',
     });
   },
 

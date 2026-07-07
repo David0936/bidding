@@ -9,6 +9,7 @@ import { settingsRouter } from './routes/settings.js';
 import { projectsRouter } from './routes/projects.js';
 import { checksRouter } from './routes/checks.js';
 import { knowledgeRouter } from './routes/knowledge.js';
+import { bidderProfileRouter } from './routes/bidderProfile.js';
 import { billingRouter } from './routes/billing.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
@@ -53,6 +54,9 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
 
   // 设置 / AI 配置
   app.use('/api/settings', settingsRouter);
+
+  // 投标主体档案
+  app.use('/api/bidder-profile', bidderProfileRouter);
 
   // 标书项目（创建、上传解析招标文件等）
   app.use('/api/projects', projectsRouter);

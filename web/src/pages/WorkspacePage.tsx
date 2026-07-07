@@ -7,6 +7,9 @@ import type {
   ConsistencyAudit,
   DeviationTable,
   DeviationTableItem,
+  FormatDoc,
+  FormatDocsResult,
+  FormatField,
   GlobalFacts,
   Outline,
   OutlineVariant,
@@ -118,6 +121,27 @@ const MATERIAL_STATUS_LABELS: Record<ProjectMaterialItem['status'], string> = {
   uploaded: '已上传',
   needs_review: '待复核',
   not_required: '非必需',
+};
+
+const FORMAT_KIND_LABELS: Record<FormatDoc['kind'], string> = {
+  letter: '函件',
+  table: '表格',
+  attachment: '附件',
+  freeform: '自拟格式',
+  cover: '封面',
+  toc: '目录',
+};
+
+const FORMAT_VOLUME_LABELS: Record<FormatDoc['volume'], string> = {
+  business: '商务标',
+  price: '价格标',
+  technical: '技术标',
+};
+
+const FORMAT_FIELD_SOURCE_LABELS: Record<FormatField['source'], string> = {
+  project: '项目',
+  bidder: '主体',
+  manual: '手填',
 };
 
 const INDUSTRY_LABELS: Record<TenderIndustryProfile['industry'], string> = {
@@ -903,6 +927,195 @@ function MaterialChecklistPanel({
   );
 }
 
+function formatDocStatusBadge(doc: FormatDoc) {
+  if (doc.status === 'confirmed') return 'badge-on';
+  if (doc.fields.some((field) => field.source === 'manual' && !field.value.trim())) return 'badge-warn';
+  return 'badge-off';
+}
+
+function FormatDocsPanel({
+  result,
+  expandedDocId,
+  updatingDocId,
+  applying,
+  onExpandDoc,
+  onPatchDoc,
+  onSaveDoc,
+  onReapplyDoc,
+  onConfirmDoc,
+  onApplyDocs,
+}: {
+  result: FormatDocsResult;
+  expandedDocId: string;
+  updatingDocId: string;
+  applying: boolean;
+  onExpandDoc: (docId: string) => void;
+  onPatchDoc: (docId: string, patch: Partial<FormatDoc>) => void;
+  onSaveDoc: (doc: FormatDoc) => void;
+  onReapplyDoc: (doc: FormatDoc) => void;
+  onConfirmDoc: (doc: FormatDoc, status: FormatDoc['status']) => void;
+  onApplyDocs: () => void;
+}) {
+  const confirmedDocs = result.docs.filter((doc) => doc.status === 'confirmed');
+  const manualGaps = result.docs.reduce(
+    (sum, doc) => sum + doc.fields.filter((field) => field.source === 'manual' && !field.value.trim()).length,
+    0,
+  );
+
+  return (
+    <div className="format-doc-panel">
+      <div className="analysis-summary">
+        <strong>格式文书提取结果</strong>
+        <p>{result.sourceChapter || '已从招标文件格式章节提取模板，原文保持只读，填充稿可编辑。'}</p>
+      </div>
+      <div className="response-matrix-metrics">
+        <div className="metric-card">
+          <span>文书</span>
+          <strong>{result.docs.length}</strong>
+        </div>
+        <div className="metric-card">
+          <span>已确认</span>
+          <strong>{confirmedDocs.length}</strong>
+        </div>
+        <div className="metric-card">
+          <span>待手填</span>
+          <strong>{manualGaps}</strong>
+        </div>
+        <div className="metric-card">
+          <span>可插入</span>
+          <strong>{confirmedDocs.length}</strong>
+        </div>
+      </div>
+      <div className="format-doc-list">
+        {result.docs.map((doc) => {
+          const expanded = expandedDocId === doc.id;
+          const manualDocGaps = doc.fields.filter((field) => field.source === 'manual' && !field.value.trim()).length;
+          return (
+            <div className="format-doc-item" data-expanded={expanded} key={doc.id}>
+              <div className="format-doc-head">
+                <div>
+                  <div className="format-doc-title-row">
+                    <strong>{doc.title}</strong>
+                    <span className={`badge ${formatDocStatusBadge(doc)}`}>
+                      {doc.status === 'confirmed' ? '已确认' : manualDocGaps > 0 ? `${manualDocGaps} 项待填` : '草稿'}
+                    </span>
+                  </div>
+                  <div className="format-doc-tags">
+                    <span className="badge badge-off">{FORMAT_KIND_LABELS[doc.kind]}</span>
+                    <span className="badge badge-off">{FORMAT_VOLUME_LABELS[doc.volume]}</span>
+                    <span className="muted">{doc.originalText.length.toLocaleString()} 字原文</span>
+                  </div>
+                </div>
+                <button className="mini-btn" onClick={() => onExpandDoc(expanded ? '' : doc.id)}>
+                  <IconPen />
+                  {expanded ? '收起' : '编辑'}
+                </button>
+              </div>
+
+              {expanded && (
+                <div className="format-doc-body">
+                  {doc.note && <div className="material-tip">{doc.note}</div>}
+                  <div className="row">
+                    <div className="field">
+                      <label>分册归属</label>
+                      <select
+                        value={doc.volume}
+                        onChange={(e) => onPatchDoc(doc.id, { volume: e.target.value as FormatDoc['volume'] })}
+                      >
+                        <option value="business">商务标</option>
+                        <option value="price">价格标</option>
+                        <option value="technical">技术标</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>状态</label>
+                      <select
+                        value={doc.status}
+                        onChange={(e) => onPatchDoc(doc.id, { status: e.target.value as FormatDoc['status'] })}
+                      >
+                        <option value="draft">草稿</option>
+                        <option value="confirmed">已确认</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {doc.fields.length > 0 && (
+                    <div className="format-field-list">
+                      {doc.fields.map((field, index) => {
+                        const emptyManual = field.source === 'manual' && !field.value.trim();
+                        return (
+                          <div className={`format-field-row ${emptyManual ? 'is-empty' : ''}`} key={`${field.key}-${index}`}>
+                            <span className="badge badge-off">{FORMAT_FIELD_SOURCE_LABELS[field.source]}</span>
+                            <label>{field.label}</label>
+                            <input
+                              value={field.value}
+                              onChange={(e) =>
+                                onPatchDoc(doc.id, {
+                                  fields: doc.fields.map((item, idx) =>
+                                    idx === index ? { ...item, value: e.target.value } : item,
+                                  ),
+                                })
+                              }
+                              placeholder={emptyManual ? '请补充' : ''}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="format-doc-columns">
+                    <div>
+                      <h3>模板原文</h3>
+                      <pre className="audit-quote format-original">{doc.originalText}</pre>
+                    </div>
+                    <div>
+                      <h3>填充稿</h3>
+                      <textarea
+                        className="format-filled-editor"
+                        value={doc.filledText}
+                        onChange={(e) => onPatchDoc(doc.id, { filledText: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => onReapplyDoc(doc)} disabled={updatingDocId === doc.id}>
+                      <IconSettings />
+                      {updatingDocId === doc.id ? '处理中…' : '重新套用字段'}
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => onSaveDoc(doc)} disabled={updatingDocId === doc.id}>
+                      <IconSave />
+                      {updatingDocId === doc.id ? '保存中…' : '保存草稿'}
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => onConfirmDoc(doc, doc.status === 'confirmed' ? 'draft' : 'confirmed')}
+                      disabled={updatingDocId === doc.id}
+                    >
+                      <IconCheckCircle />
+                      {doc.status === 'confirmed' ? '取消确认' : '确认文书'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="actions">
+        <button className="btn btn-primary" onClick={onApplyDocs} disabled={applying || confirmedDocs.length === 0}>
+          <IconCheckCircle />
+          {applying ? '插入中…' : '插入已确认文书到目录'}
+        </button>
+        <span className="muted" style={{ fontSize: 12 }}>
+          会先移除旧格式文书节点，再插入当前已确认版本。
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function WorkspacePage({
   onGoSettings,
   openProjectId,
@@ -970,6 +1183,13 @@ export default function WorkspacePage({
   const [uploadingMaterialItemId, setUploadingMaterialItemId] = useState('');
   const [deletingMaterialFileId, setDeletingMaterialFileId] = useState('');
 
+  // 投标文件格式文书
+  const [formatDocs, setFormatDocs] = useState<FormatDocsResult | null>(null);
+  const [formatLoading, setFormatLoading] = useState(false);
+  const [formatUpdatingDocId, setFormatUpdatingDocId] = useState('');
+  const [formatApplying, setFormatApplying] = useState(false);
+  const [expandedFormatDocId, setExpandedFormatDocId] = useState('');
+
   // 全文一致性审计
   const [audit, setAudit] = useState<ConsistencyAudit | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -1028,6 +1248,8 @@ export default function WorkspacePage({
     setResponseMatrix(null);
     setDeviationTable(null);
     setMaterialChecklist(null);
+    setFormatDocs(null);
+    setExpandedFormatDocId('');
     setAudit(null);
     invalidateReadiness();
   }
@@ -1092,6 +1314,8 @@ export default function WorkspacePage({
     setResponseMatrix(null);
     setDeviationTable(null);
     setMaterialChecklist(null);
+    setFormatDocs(null);
+    setExpandedFormatDocId('');
     setAudit(null);
     setReadiness(null);
     setSealState({ seal: null, placements: [] });
@@ -1144,6 +1368,16 @@ export default function WorkspacePage({
         .then((m) => setMaterialChecklist(m))
         .catch(() => setMaterialChecklist(null));
       api
+        .getFormatDocs(current.id)
+        .then((result) => {
+          setFormatDocs(result.docs.length > 0 ? result : null);
+          setExpandedFormatDocId(result.docs[0]?.id ?? '');
+        })
+        .catch(() => {
+          setFormatDocs(null);
+          setExpandedFormatDocId('');
+        });
+      api
         .getConsistencyAudit(current.id)
         .then((a) => setAudit(a))
         .catch(() => setAudit(null));
@@ -1186,6 +1420,8 @@ export default function WorkspacePage({
       setResponseMatrix(null);
       setDeviationTable(null);
       setMaterialChecklist(null);
+      setFormatDocs(null);
+      setExpandedFormatDocId('');
       setAudit(null);
       invalidateReadiness();
     } catch (e) {
@@ -1205,6 +1441,8 @@ export default function WorkspacePage({
       setResponseMatrix(null);
       setDeviationTable(null);
       setMaterialChecklist(null);
+      setFormatDocs(null);
+      setExpandedFormatDocId('');
       setAudit(null);
       invalidateReadiness();
     } catch (e) {
@@ -1232,6 +1470,8 @@ export default function WorkspacePage({
       setResponseMatrix(null);
       setDeviationTable(null);
       setMaterialChecklist(null);
+      setFormatDocs(null);
+      setExpandedFormatDocId('');
       setAudit(null);
       invalidateReadiness();
     } catch (e) {
@@ -1250,6 +1490,8 @@ export default function WorkspacePage({
     setResponseMatrix(null);
     setDeviationTable(null);
     setMaterialChecklist(null);
+    setFormatDocs(null);
+    setExpandedFormatDocId('');
     setAudit(null);
     invalidateReadiness();
   }
@@ -1265,6 +1507,8 @@ export default function WorkspacePage({
         setResponseMatrix(null);
         setDeviationTable(null);
         setMaterialChecklist(null);
+        setFormatDocs(null);
+        setExpandedFormatDocId('');
       }
       setAudit(null);
       invalidateReadiness();
@@ -1286,6 +1530,8 @@ export default function WorkspacePage({
       setResponseMatrix(null);
       setDeviationTable(null);
       setMaterialChecklist(null);
+      setFormatDocs(null);
+      setExpandedFormatDocId('');
       setAudit(null);
       invalidateReadiness();
     } catch (e) {
@@ -1306,6 +1552,8 @@ export default function WorkspacePage({
       setResponseMatrix(null);
       setDeviationTable(null);
       setMaterialChecklist(null);
+      setFormatDocs(null);
+      setExpandedFormatDocId('');
       setAudit(null);
       invalidateReadiness();
     } catch (e) {
@@ -1381,6 +1629,8 @@ export default function WorkspacePage({
       setResponseMatrix(matrix);
       setDeviationTable(null);
       setMaterialChecklist(null);
+      setFormatDocs(null);
+      setExpandedFormatDocId('');
       invalidateReadiness();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1509,6 +1759,85 @@ export default function WorkspacePage({
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setDeletingMaterialFileId('');
+    }
+  }
+
+  async function handleGenerateFormatDocs() {
+    if (!current) return;
+    setFormatLoading(true);
+    setError('');
+    try {
+      if (facts && factsDirty) {
+        const savedFacts = await api.saveGlobalFacts(current.id, facts);
+        setFacts(savedFacts);
+        setFactsDirty(false);
+      }
+      const result = await api.generateFormatDocs(current.id);
+      setFormatDocs(result);
+      setExpandedFormatDocId(result.docs[0]?.id ?? '');
+      setAudit(null);
+      invalidateReadiness();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFormatLoading(false);
+    }
+  }
+
+  function handlePatchFormatDoc(docId: string, patch: Partial<FormatDoc>) {
+    setFormatDocs((result) =>
+      result
+        ? {
+            ...result,
+            docs: result.docs.map((doc) => (doc.id === docId ? { ...doc, ...patch } : doc)),
+          }
+        : result,
+    );
+  }
+
+  async function handleSaveFormatDoc(doc: FormatDoc, patch: Partial<FormatDoc> = {}, reapplyFields = false) {
+    if (!current) return;
+    setFormatUpdatingDocId(doc.id);
+    setError('');
+    try {
+      const result = await api.updateFormatDoc(current.id, doc.id, {
+        filledText: doc.filledText,
+        fields: doc.fields,
+        status: doc.status,
+        volume: doc.volume,
+        ...patch,
+        reapplyFields,
+      });
+      setFormatDocs(result);
+      setExpandedFormatDocId(doc.id);
+      setAudit(null);
+      invalidateReadiness();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFormatUpdatingDocId('');
+    }
+  }
+
+  async function handleApplyFormatDocs() {
+    if (!current) return;
+    setFormatApplying(true);
+    setError('');
+    try {
+      if (outline && outlineDirty) {
+        const saved = await api.saveOutline(current.id, outline, { clearResponseMatrix: false });
+        setOutline(saved);
+        setOutlineDirty(false);
+      }
+      const updated = await api.applyFormatDocs(current.id);
+      setOutline(updated);
+      setOutlineDirty(false);
+      setAudit(null);
+      invalidateReadiness();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFormatApplying(false);
     }
   }
 
@@ -1919,8 +2248,10 @@ export default function WorkspacePage({
   const uploadedRequiredMaterials = requiredMaterials.filter((item) => item.files.length > 0 || item.status === 'uploaded');
   const hasMaterialChecklist = !!materialChecklist && materialChecklist.items.length > 0;
   const done7 = hasMaterialChecklist && uploadedRequiredMaterials.length >= requiredMaterials.length;
-  const done8 = gen.total > 0 && gen.done >= gen.total;
-  const done9 = !!readiness && readiness.level !== 'blocked';
+  const hasFormatDocs = !!formatDocs && formatDocs.docs.length > 0;
+  const done8 = hasFormatDocs && formatDocs.docs.every((doc) => doc.status === 'confirmed');
+  const done9 = gen.total > 0 && gen.done >= gen.total;
+  const done10 = !!readiness && readiness.level !== 'blocked';
   const currentStep = !done1
     ? 1
     : !done2
@@ -1939,7 +2270,9 @@ export default function WorkspacePage({
                   ? 8
                   : !done9
                     ? 9
-                    : 10;
+                    : !done10
+                      ? 10
+                      : 11;
   const flowSteps = [
     { no: '01', name: '上传招标文件', done: done1 },
     { no: '02', name: '解析关键项', done: done2 },
@@ -1948,9 +2281,10 @@ export default function WorkspacePage({
     { no: '05', name: '全局事实', done: done5 },
     { no: '06', name: '响应矩阵', done: done6 },
     { no: '07', name: '补充资料', done: done7 },
-    { no: '08', name: 'AI 生成正文', done: done8 },
-    { no: '09', name: '提交前总检', done: done9 },
-    { no: '10', name: '导出/盖章', done: false },
+    { no: '08', name: '格式文书', done: done8 },
+    { no: '09', name: 'AI 生成正文', done: done9 },
+    { no: '10', name: '提交前总检', done: done10 },
+    { no: '11', name: '导出/盖章', done: false },
   ];
   const activePlacement = sealState.placements.find((placement) => placement.id === activePlacementId) ?? null;
   const visibleSealPlacements = sealState.placements.filter((placement) => placement.page === sealPage);
@@ -2464,6 +2798,8 @@ export default function WorkspacePage({
                     setResponseMatrix(null);
                     setDeviationTable(null);
                     setMaterialChecklist(null);
+                    setFormatDocs(null);
+                    setExpandedFormatDocId('');
                     setAudit(null);
                     invalidateReadiness();
                   }}
@@ -2534,6 +2870,8 @@ export default function WorkspacePage({
                   setResponseMatrix(null);
                   setDeviationTable(null);
                   setMaterialChecklist(null);
+                  setFormatDocs(null);
+                  setExpandedFormatDocId('');
                   setAudit(null);
                   invalidateReadiness();
                 }}
@@ -2721,10 +3059,71 @@ export default function WorkspacePage({
         )}
       </div>
 
-      {/* Step 8 AI 生成正文 */}
+      {/* Step 8 投标文件格式文书 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
           <div className={`step-no ${materialChecklist ? '' : 'muted-no'}`} id="step-08">08</div>
+          <div>
+            <h2>格式文书</h2>
+            <p className="hint" style={{ margin: 0 }}>
+              从招标文件“投标文件格式”章节提取授权书、声明函、报价表等模板，补齐字段后插入目录。
+            </p>
+          </div>
+        </div>
+
+        {!current?.tender ? (
+          <div className="empty-tip">请先上传并解析招标文件。</div>
+        ) : !facts ? (
+          <div className="empty-tip">请先生成全局事实，项目名称、采购人和交付信息会用于自动填字段。</div>
+        ) : !materialChecklist ? (
+          <div className="empty-tip">请先梳理资料清单。</div>
+        ) : (
+          <>
+            {requiredMaterials.length > uploadedRequiredMaterials.length && (
+              <div className="result warn" style={{ marginTop: 0 }}>
+                <IconAlertTriangle />
+                <span>
+                  仍有 {requiredMaterials.length - uploadedRequiredMaterials.length} 项必需资料未上传。格式文书可先生成，但资质/业绩附件类字段可能需要后补。
+                </span>
+              </div>
+            )}
+            <div className="actions" style={{ marginBottom: formatDocs ? 16 : 0 }}>
+              <button className="btn btn-primary" onClick={handleGenerateFormatDocs} disabled={formatLoading}>
+                <IconPen />
+                {formatLoading ? '提取中…' : formatDocs ? '重新提取格式文书' : 'AI 提取格式文书'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={onGoSettings}>
+                <IconSettings />
+                投标主体档案
+              </button>
+              {formatDocs && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  文书 {formatDocs.docs.length} 份 · 已确认 {formatDocs.docs.filter((doc) => doc.status === 'confirmed').length} 份
+                </span>
+              )}
+            </div>
+            {formatDocs && (
+              <FormatDocsPanel
+                result={formatDocs}
+                expandedDocId={expandedFormatDocId}
+                updatingDocId={formatUpdatingDocId}
+                applying={formatApplying}
+                onExpandDoc={setExpandedFormatDocId}
+                onPatchDoc={handlePatchFormatDoc}
+                onSaveDoc={(doc) => handleSaveFormatDoc(doc)}
+                onReapplyDoc={(doc) => handleSaveFormatDoc(doc, {}, true)}
+                onConfirmDoc={(doc, status) => handleSaveFormatDoc(doc, { status })}
+                onApplyDocs={handleApplyFormatDocs}
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Step 9 AI 生成正文 */}
+      <div className="card" style={{ maxWidth: 920 }}>
+        <div className="step-head">
+          <div className={`step-no ${done8 ? '' : 'muted-no'}`} id="step-09">09</div>
           <div>
             <h2>AI 生成正文</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2743,6 +3142,10 @@ export default function WorkspacePage({
           <div className="empty-tip">请先生成响应矩阵，让正文按评分点、废标项和商务/技术条款逐项覆盖。</div>
         ) : !materialChecklist ? (
           <div className="empty-tip">请先梳理资料清单。客户上传的材料会被自动引用到对应章节。</div>
+        ) : !formatDocs ? (
+          <div className="empty-tip">请先提取格式文书，并把需要的授权书、声明函、报价表插入目录。</div>
+        ) : !done8 ? (
+          <div className="empty-tip">请先确认格式文书。确认后的文书会插入目录，随正文一起导出。</div>
         ) : (
           <>
             {requiredMaterials.length > uploadedRequiredMaterials.length && (
@@ -2766,7 +3169,7 @@ export default function WorkspacePage({
               saving={savingOutline}
               dirty={outlineDirty}
             />
-            {done8 && (
+            {done9 && (
               <div className="audit-box">
                 <div className="actions">
                   <button
@@ -2790,10 +3193,10 @@ export default function WorkspacePage({
         )}
       </div>
 
-      {/* Step 9 提交前总检 */}
+      {/* Step 10 提交前总检 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${done8 ? '' : 'muted-no'}`} id="step-09">09</div>
+          <div className={`step-no ${done9 ? '' : 'muted-no'}`} id="step-10">10</div>
           <div>
             <h2>提交前总检</h2>
             <p className="hint" style={{ margin: 0 }}>
@@ -2808,7 +3211,7 @@ export default function WorkspacePage({
           <div className="empty-tip">请先生成响应矩阵。</div>
         ) : !materialChecklist ? (
           <div className="empty-tip">请先梳理资料清单。</div>
-        ) : !done8 ? (
+        ) : !done9 ? (
           <div className="empty-tip">请先完成正文生成或手动补齐空白章节。</div>
         ) : (
           <>
@@ -2846,10 +3249,10 @@ export default function WorkspacePage({
         )}
       </div>
 
-      {/* Step 10 导出与电子盖章 */}
+      {/* Step 11 导出与电子盖章 */}
       <div className="card" style={{ maxWidth: 920 }}>
         <div className="step-head">
-          <div className={`step-no ${outline ? '' : 'muted-no'}`} id="step-10">10</div>
+          <div className={`step-no ${outline ? '' : 'muted-no'}`} id="step-11">11</div>
           <div>
             <h2>导出与电子盖章</h2>
             <p className="hint" style={{ margin: 0 }}>
