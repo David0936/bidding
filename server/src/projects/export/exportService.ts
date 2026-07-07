@@ -106,6 +106,22 @@ export interface BuildDocxOptions {
 export interface BuildPdfOptions {
   seal?: PdfSealOptions | null;
   resolveImage?: MaterialImageResolver;
+  /** 封面页（项目名/文档标题/投标人与日期占位）；不传则保持旧版首页直接出正文 */
+  cover?: {
+    projectName: string;
+    docTitle: string;
+    bidderName?: string;
+    date?: string;
+  };
+  /** 生成目录页（一二级章节+页码，虚线引导）；仅在 cover 同时开启时建议使用 */
+  toc?: boolean;
+}
+
+interface PdfTocEntry {
+  title: string;
+  depth: number;
+  /** 1 起算的实际页码 */
+  pageNumber: number;
 }
 
 function resolveImageRef(ref: string, resolver?: MaterialImageResolver): ResolvedImage | null {
@@ -759,9 +775,14 @@ async function renderPdfNodes(
   nodes: OutlineNode[],
   depth: number,
   resolver?: MaterialImageResolver,
+  tocEntries?: PdfTocEntry[],
 ): Promise<void> {
   for (const node of nodes) {
     const size = Math.max(12, 17 - depth * 1.5);
+    // 一级章节从新页开始（有目录/封面的正式排版习惯）；首页光标在顶部时不强制换页
+    if (depth === 0 && tocEntries && ctx.y < A4.height - PDF_MARGIN.top - 1) {
+      addPage(ctx);
+    }
     drawWrappedParagraph(ctx, node.title, {
       font: ctx.fonts.bold,
       size,
@@ -769,13 +790,154 @@ async function renderPdfNodes(
       after: 6,
       color: rgb(0.03, 0.28, 0.67),
     });
+    // 标题绘制完成后记录其所在页（1 起算），供目录页回填
+    if (tocEntries && depth <= 1) {
+      tocEntries.push({ title: node.title, depth, pageNumber: ctx.doc.getPageCount() });
+    }
 
     if (node.children.length > 0) {
-      await renderPdfNodes(ctx, node.children, depth + 1, resolver);
+      await renderPdfNodes(ctx, node.children, depth + 1, resolver, tocEntries);
     } else if (node.content?.trim()) {
       await markdownLinesToPdf(ctx, node.content, resolver);
     }
   }
+}
+
+/** 封面页：项目名/文档标题居中，投标人与日期占位在下部 */
+function drawPdfCover(ctx: PdfContext, cover: NonNullable<BuildPdfOptions['cover']>): void {
+  const centerText = (text: string, y: number, size: number, font: PDFFont, color = rgb(0.08, 0.13, 0.2)) => {
+    const maxWidth = A4.width - PDF_MARGIN.left - PDF_MARGIN.right;
+    const lines = wrapText(text, font, size, maxWidth, ctx.fonts);
+    let cursor = y;
+    for (const line of lines) {
+      const width = textWidth(line, font, size, ctx.fonts);
+      ctx.page.drawText(sanitizeForFont(line, ctx.fonts), {
+        x: (A4.width - width) / 2,
+        y: cursor,
+        size,
+        font,
+        color,
+      });
+      cursor -= size * 1.6;
+    }
+    return cursor;
+  };
+
+  let y = A4.height - 220;
+  y = centerText(cover.projectName, y, 24, ctx.fonts.bold);
+  y -= 30;
+  centerText(cover.docTitle, y, 18, ctx.fonts.bold, rgb(0.03, 0.28, 0.67));
+
+  const fieldSize = 13;
+  const fields = [
+    `投标人：${cover.bidderName ?? ''}（盖章）`,
+    '法定代表人或其委托代理人：（签字或盖章）',
+    `日期：${cover.date ?? ''}`,
+  ];
+  let fieldY = 200;
+  for (const field of fields) {
+    const width = textWidth(field, ctx.fonts.regular, fieldSize, ctx.fonts);
+    ctx.page.drawText(sanitizeForFont(field, ctx.fonts), {
+      x: (A4.width - width) / 2,
+      y: fieldY,
+      size: fieldSize,
+      font: ctx.fonts.regular,
+      color: rgb(0.08, 0.13, 0.2),
+    });
+    fieldY -= 34;
+  }
+}
+
+const TOC_ROW_HEIGHT = 24;
+const TOC_HEADER_SPACE = 70;
+
+function tocRowsPerPage(): number {
+  return Math.floor((A4.height - PDF_MARGIN.top - PDF_MARGIN.bottom - TOC_HEADER_SPACE) / TOC_ROW_HEIGHT);
+}
+
+/** 目录条目数固定可先算出需预留的整页数，正文渲染完后回填 */
+function countTocEntries(nodes: OutlineNode[], depth = 0): number {
+  let count = 0;
+  for (const node of nodes) {
+    if (depth <= 1) count += 1;
+    if (depth < 1) count += countTocEntries(node.children, depth + 1);
+  }
+  return count;
+}
+
+/** 在预留页上回填目录：标题 + 虚线引导 + 右对齐页码 */
+function fillPdfToc(doc: PDFDocument, fonts: PdfFonts, pageIndices: number[], entries: PdfTocEntry[]): void {
+  const pages = doc.getPages();
+  const rows = tocRowsPerPage();
+  const contentWidth = A4.width - PDF_MARGIN.left - PDF_MARGIN.right;
+
+  pageIndices.forEach((pageIndex, tocPageNo) => {
+    const page = pages[pageIndex];
+    if (!page) return;
+
+    if (tocPageNo === 0) {
+      const heading = '目  录';
+      const headingWidth = fonts.bold.widthOfTextAtSize(sanitizeForFont(heading, fonts), 18);
+      page.drawText(sanitizeForFont(heading, fonts), {
+        x: (A4.width - headingWidth) / 2,
+        y: A4.height - PDF_MARGIN.top - 20,
+        size: 18,
+        font: fonts.bold,
+        color: rgb(0.08, 0.13, 0.2),
+      });
+    }
+
+    const slice = entries.slice(tocPageNo * rows, (tocPageNo + 1) * rows);
+    let y = A4.height - PDF_MARGIN.top - TOC_HEADER_SPACE;
+    for (const entry of slice) {
+      const font = entry.depth === 0 ? fonts.bold : fonts.regular;
+      const size = entry.depth === 0 ? 12 : 11;
+      const indent = entry.depth * 18;
+      const pageLabel = String(entry.pageNumber);
+      const pageLabelWidth = fonts.regular.widthOfTextAtSize(pageLabel, size);
+
+      // 标题过长时截断，保证引导线与页码不重叠
+      let title = entry.title;
+      const maxTitleWidth = contentWidth - indent - pageLabelWidth - 40;
+      while (title.length > 2 && font.widthOfTextAtSize(sanitizeForFont(title, fonts), size) > maxTitleWidth) {
+        title = title.slice(0, -1);
+      }
+      if (title !== entry.title) title = `${title}…`;
+
+      const titleWidth = font.widthOfTextAtSize(sanitizeForFont(title, fonts), size);
+      page.drawText(sanitizeForFont(title, fonts), {
+        x: PDF_MARGIN.left + indent,
+        y,
+        size,
+        font,
+        color: rgb(0.08, 0.13, 0.2),
+      });
+
+      // 虚线引导
+      const dotsStart = PDF_MARGIN.left + indent + titleWidth + 6;
+      const dotsEnd = A4.width - PDF_MARGIN.right - pageLabelWidth - 8;
+      if (dotsEnd > dotsStart + 10) {
+        const dotWidth = fonts.regular.widthOfTextAtSize('.', size);
+        const dotCount = Math.floor((dotsEnd - dotsStart) / (dotWidth * 1.8));
+        page.drawText('.'.repeat(Math.max(dotCount, 0)), {
+          x: dotsStart,
+          y,
+          size,
+          font: fonts.regular,
+          color: rgb(0.55, 0.6, 0.68),
+        });
+      }
+
+      page.drawText(pageLabel, {
+        x: A4.width - PDF_MARGIN.right - pageLabelWidth,
+        y,
+        size,
+        font: fonts.regular,
+        color: rgb(0.08, 0.13, 0.2),
+      });
+      y -= TOC_ROW_HEIGHT;
+    }
+  });
 }
 
 async function drawSeal(doc: PDFDocument, seal: PdfSealOptions): Promise<void> {
@@ -839,23 +1001,50 @@ export async function buildPdf(outline: Outline, options: BuildPdfOptions = {}):
     y: A4.height - PDF_MARGIN.top,
   };
 
-  const title = outline.title || '投标技术方案';
-  const titleSize = 20;
-  const titleLines = wrapText(
-    title,
-    fonts.bold,
-    titleSize,
-    A4.width - PDF_MARGIN.left - PDF_MARGIN.right,
-    fonts,
-  );
-  for (const line of titleLines) {
-    const lineWidth = textWidth(line, fonts.bold, titleSize, fonts);
-    drawLine(ctx, line, (A4.width - lineWidth) / 2, titleSize, fonts.bold);
-    ctx.y -= titleSize * 1.8;
+  // 封面（可选）：占据第一页；否则沿用旧版首页居中标题
+  if (options.cover) {
+    drawPdfCover(ctx, options.cover);
+  } else {
+    const title = outline.title || '投标技术方案';
+    const titleSize = 20;
+    const titleLines = wrapText(
+      title,
+      fonts.bold,
+      titleSize,
+      A4.width - PDF_MARGIN.left - PDF_MARGIN.right,
+      fonts,
+    );
+    for (const line of titleLines) {
+      const lineWidth = textWidth(line, fonts.bold, titleSize, fonts);
+      drawLine(ctx, line, (A4.width - lineWidth) / 2, titleSize, fonts.bold);
+      ctx.y -= titleSize * 1.8;
+    }
+    ctx.y -= 18;
   }
-  ctx.y -= 18;
 
-  await renderPdfNodes(ctx, outline.nodes, 0, options.resolveImage);
+  // 目录页：条目数固定，先按行容量预留整页，正文渲染完成后回填实际页码
+  const tocEnabled = Boolean(options.toc);
+  const tocPageIndices: number[] = [];
+  const tocEntries: PdfTocEntry[] = [];
+  if (tocEnabled) {
+    const entryCount = countTocEntries(outline.nodes);
+    const tocPages = Math.max(1, Math.ceil(entryCount / tocRowsPerPage()));
+    for (let i = 0; i < tocPages; i++) {
+      addPage(ctx);
+      tocPageIndices.push(doc.getPageCount() - 1);
+    }
+  }
+
+  // 正文：有封面/目录时从新页起排
+  if (options.cover || tocEnabled) {
+    addPage(ctx);
+  }
+
+  await renderPdfNodes(ctx, outline.nodes, 0, options.resolveImage, tocEnabled ? tocEntries : undefined);
+
+  if (tocEnabled) {
+    fillPdfToc(doc, fonts, tocPageIndices, tocEntries);
+  }
   drawPdfPageNumbers(doc, fonts);
 
   if (options.seal) {

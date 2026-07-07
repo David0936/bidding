@@ -1055,7 +1055,15 @@ projectsRouter.get('/:id/export/pdf', async (req, res) => {
   if ('error' in resolved) return res.status(400).json({ message: resolved.error });
 
   try {
-    const buffer = await buildPdf(resolved.outline, { resolveImage: materialImageResolver(req.params.id) });
+    // 普通 PDF 导出带封面与目录页；盖章版 PDF 保持旧版布局，避免用户已保存的盖章页码坐标错位
+    const buffer = await buildPdf(resolved.outline, {
+      resolveImage: materialImageResolver(req.params.id),
+      cover: {
+        projectName: project.name || resolved.outline.title || '投标项目',
+        docTitle: exportDocTitle(resolved.suffix),
+      },
+      toc: true,
+    });
     const fileName = `${safeExportBaseName(project.name || '投标技术方案')}${resolved.suffix}.pdf`;
     sendDownload(res, buffer, 'application/pdf', fileName);
   } catch (err) {
