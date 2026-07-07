@@ -230,6 +230,11 @@ export interface FormatDocsResult {
 
 ## 阶段四：M39 确定性校验（规则，不调 AI）
 
+> ⚠️ **2026-07-07 更新：本阶段已由统筹方（Claude）实现并合入 main（commit `07be1c8`），Codex 不需要再做。**
+> 实现位置 `server/src/projects/checks/deterministicChecks.ts`，已接入提交前总检（consistency 分组）。
+> 与原规格的差异：规则4（签章占位）依赖 M38 的 formatDocs，待 M38 交付验收后由统筹方补接。
+> Codex 只需完成阶段三 M38；若 M38 的 formatDocs 类型定义与本文档 3.2 节不同，交付时说明即可。
+
 ### 目标
 把高频废标点做成确定性规则检查，进「废标项检查」与「提交前总检」。
 
